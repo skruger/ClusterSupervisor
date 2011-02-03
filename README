@@ -1,0 +1,1 @@
+cluster_supervisor for managing supervisor children that need to exist with only one instance in a cluster.
