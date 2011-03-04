@@ -11,7 +11,8 @@
 %% --------------------------------------------------------------------
 -export([
 	 start/2,
-	 stop/1
+	 stop/1,
+	 run/0
         ]).
 
 %% --------------------------------------------------------------------
@@ -30,7 +31,17 @@
 %% --------------------------------------------------------------------
 %% API Functions
 %% --------------------------------------------------------------------
+run() ->
+	run([]).
 
+run(CallBacks) ->
+	appmon:start(),
+	mnesia:start(),
+	application:load(cluster_supervisor),
+	application:start(cluster_supervisor).
+
+%% application:set_env(cluster_supervisor,callbacks,CallBacks),
+	
 
 %% ====================================================================!
 %% External functions

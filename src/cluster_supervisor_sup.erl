@@ -49,7 +49,15 @@ start_link(Args) ->
 %%          {error, Reason}
 %% --------------------------------------------------------------------
 init(_Args) ->
-    {ok,{{one_for_one,0,1}, []}}.
+    {ok,{{one_for_one,2,5}, [
+							 {cluster_conf,{cluster_conf,start_link,[]},
+							  permanent,5000,worker,[]},
+							 {cluster_vip,{cluster_supervisor,start_link,[vip]},
+							  permanent,5000,worker,[]}
+							,
+							 {cluster_network_manager,{cluster_network_manager,start_link,[]},
+							  permanent,5000,worker,[]}
+							 ]}}.
 
 %% ====================================================================
 %% Internal functions

@@ -71,7 +71,7 @@ add_childspec(Name,Sup,CSpec) ->
 %% --------------------------------------------------------------------
 init([Name]) ->
 %% 	error_logger:info_msg("~p starting on ~p~n",[get_name(Name),node()]),
-	mnesia:create_table(get_table_name(Name),[{attributes,record_info(fields,cluster_supervisor_childspec)}]),
+	mnesia:create_table(get_table_name(Name),[{record_name,cluster_supervisor_childspec},{attributes,record_info(fields,cluster_supervisor_childspec)}]),
 	mnesia:change_table_copy_type(get_table_name(Name),node(),disc_copies),
 	lists:foreach(fun(Node) ->
 						  gen_server:cast({get_name(Name),Node},elect_master)
