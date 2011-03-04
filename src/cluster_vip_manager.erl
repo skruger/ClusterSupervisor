@@ -20,7 +20,7 @@
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2, code_change/3]).
 
--record(state, {check_timer}).
+-record(state, {check_timer,ifconfig_script}).
 
 %% ====================================================================
 %% External functions
@@ -65,9 +65,10 @@ disable_vip({ip,_}=Addr) ->
 %%          {stop, Reason}
 %% --------------------------------------------------------------------
 init([]) ->
+	process_flag(trap_exit, true),
 	erlang:register(?MODULE,self()),
 	self() ! check_vips_timer,
-    {ok, #state{}}.
+    {ok, #state{ifconfig_script=cluster_conf:get(ifconfig_script,?DEFAULT_IFCFG)}}.
 
 %% --------------------------------------------------------------------
 %% Function: handle_call/3
@@ -180,10 +181,14 @@ handle_cast({check_active_vip_details,#cluster_network_vip{addr=Addr,interface=I
 			mnesia:transaction(fun() -> mnesia:write(NewVip) end),
 			{noreply,State};
 		Other ->
-			error_logger:error_msg("Vip not found on any running nodes!  Trying to start!~nfind_alias_node() returned ~p~nVip: ~p~n",[Other,Vip]),
-			gen_server:cast(self(),{start_vip,Vip}),
+			Node=cluster_supervisor_callback:vip_select_starthost(Addr),
+			error_logger:error_msg("Vip not found on any running nodes!  Trying to start on ~p!~nfind_alias_node() returned ~p~nVip: ~p~n",[Node,Other,Vip]),
+			gen_server:cast({?MODULE,Node},{start_vip,Vip}),
 			{noreply,State}
 	end;
+handle_cast(stop_local_vips,State) ->
+	stop_local_vips(State),
+	{noreply,State};
 handle_cast(Msg, State) ->
 	error_logger:info_msg("Received unknown message: ~p~n",[Msg]),
     {noreply, State}.
@@ -201,7 +206,12 @@ handle_info(check_vips_timer,State) ->
 	{noreply,State#state{check_timer=TRef}};
 handle_info(check_vips,State) ->
 %% 	error_logger:info_msg("Check vips.~n",[]),
-	lists:foreach(fun(V) -> gen_server:cast(self(),{check_vip,V}) end,mnesia:dirty_all_keys(cluster_network_vip)),
+	case cluster_supervisor:get_quorum(vip) of
+		true ->
+			lists:foreach(fun(V) -> gen_server:cast(self(),{check_vip,V}) end,mnesia:dirty_all_keys(cluster_network_vip));
+		false ->
+			gen_server:cast(self(),stop_local_vips)
+	end,
 	{noreply,State};
 handle_info(Info, State) ->
     {noreply, State}.
@@ -211,7 +221,11 @@ handle_info(Info, State) ->
 %% Description: Shutdown the server
 %% Returns: any (ignored by gen_server)
 %% --------------------------------------------------------------------
+terminate(shutdown,State) ->
+	stop_local_vips(State),
+	ok;
 terminate(Reason, State) ->
+	error_logger:info_msg("~p stopping for reason ~p.~n",[?MODULE,Reason]),
     ok.
 
 %% --------------------------------------------------------------------
@@ -250,4 +264,15 @@ get_vip_alias(IP) ->
 		Int -> Int
 	end,
 	Iface++":"++Num.
-							
+	
+stop_local_vips(State) ->
+	Interfaces = 
+	lists:filter(fun(Int) -> Int#network_interfaces.alias end,cluster_network_manager:discover_node_interfaces(local)),
+	lists:foreach(fun(IntRec) ->
+						  Iface = IntRec#network_interfaces.interface,
+						  IfCfgCmd = State#state.ifconfig_script,
+						  IfCfg = io_lib:format("~s ~s down",[IfCfgCmd,Iface]),
+						  Ret = os:cmd(IfCfg),
+						  error_logger:error_msg("Stopping local vip: ~p~n~p~n~p~n",[IntRec,lists:flatten(IfCfg),Ret])
+				  end,Interfaces),
+	ok.

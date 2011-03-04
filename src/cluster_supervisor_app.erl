@@ -31,10 +31,8 @@
 %% --------------------------------------------------------------------
 %% API Functions
 %% --------------------------------------------------------------------
-run() ->
-	run([]).
 
-run(CallBacks) ->
+run() ->
 	appmon:start(),
 	mnesia:start(),
 	application:load(cluster_supervisor),

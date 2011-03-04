@@ -12,6 +12,8 @@
 %%
 -export([behaviour_info/1,add/3,remove/3]).
 
+-export([vip_state/2,vip_select_starthost/1]).
+
 %%
 %% API Functions
 %%
@@ -24,7 +26,7 @@ behaviour_info(_) ->
 %% vip_state(State,VipAddr,ExtraArgs)
 %% vip_select_starthost(VipAddr,ExtraArgs)
 
-exec(vip_select_starthost,VipAddr) ->
+vip_select_starthost(VipAddr) ->
 	CallBacks =
 		case application:get_env(cluster_supervisor,callbacks) of
 			{ok,CBList} ->
@@ -50,11 +52,14 @@ exec(vip_select_starthost,VipAddr) ->
 							 pong -> true;
 							 _ -> false
 						 end end,StartHosts0),
-	[Host|_] = StartHosts,
-	Host.
+	case StartHosts of
+		[Host|_] -> Host;
+		_ -> node()
+	end.
+		
 						 
 
-exec(vip_state,State,VipAddr) ->
+vip_state(State,VipAddr) ->
 	CallBacks =
 		case application:get_env(cluster_supervisor,callbacks) of
 			{ok,CBList} ->

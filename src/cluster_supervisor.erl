@@ -15,10 +15,12 @@
 %% External exports
 -export([get_name/1,start_link/1,discover_peers/1,force_election/1,stop_local/1,get_master/1,add_childspec/3,get_children/1,start_cluster/1]).
 
+-export([get_quorum/1]).
+
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2, code_change/3]).
 
--record(state, {name,cluster_peers,is_master,master_node,peer_monitors,child_monitors}).
+-record(state, {name,cluster_peers,is_master,master_node,peer_monitors,child_monitors,quorum}).
 
 %% ====================================================================
 %% External functions
@@ -61,6 +63,10 @@ force_election(Name) ->
 add_childspec(Name,Sup,CSpec) ->
 	gen_server:call({global,get_name(Name)},{add_childspec,Sup,CSpec}).
 
+get_quorum(Name) ->
+	gen_server:call({global,get_name(Name)},get_quorum).
+
+
 %% --------------------------------------------------------------------
 %% Function: init/1
 %% Description: Initiates the server
@@ -77,7 +83,7 @@ init([Name]) ->
 						  gen_server:cast({get_name(Name),Node},elect_master)
 				  end,nodes()),
 	erlang:send_after(1000,self(),force_election),
-	{ok, #state{name=Name,cluster_peers=[],is_master=false,child_monitors=[],peer_monitors=[]}}.
+	{ok, #state{name=Name,cluster_peers=[],is_master=false,child_monitors=[],peer_monitors=[],quorum=true}}.
 
 %% --------------------------------------------------------------------
 %% Function: handle_call/3
@@ -89,6 +95,18 @@ init([Name]) ->
 %%          {stop, Reason, Reply, State}   | (terminate/2 is called)
 %%          {stop, Reason, State}            (terminate/2 is called)
 %% --------------------------------------------------------------------
+handle_call(get_quorum,_From,State) ->
+	QuorumSize = cluster_conf:get(quorum,1),
+	case length([node()|State#state.cluster_peers]) of
+		Count when Count >= QuorumSize ->
+			{reply,true,State#state{quorum=true}};
+		Count ->
+			if State#state.quorum == true ->
+				   error_logger:error_msg("Unable to get quorum!  ~p members needed, ~p members active.~n",[QuorumSize,Count]);
+			   true -> ok
+			end,
+			{reply,false,State#state{quorum=false}}
+	end;
 handle_call(get_children,_From,State) ->
 	Name = State#state.name,
 	{reply,do_get_children(Name),State};
