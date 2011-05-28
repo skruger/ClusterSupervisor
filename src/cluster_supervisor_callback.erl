@@ -12,52 +12,18 @@
 %%
 -export([behaviour_info/1,add/3,remove/3]).
 
--export([vip_state/2,vip_select_starthost/1]).
+-export([vip_state/2]).
 
 %%
 %% API Functions
 %%
 
 behaviour_info(callbacks) ->
-	[{vip_state,3},{vip_select_starthost,2}];
+	[{vip_state,3}];
 behaviour_info(_) ->
 	undefined.
 
 %% vip_state(State,VipAddr,ExtraArgs)
-%% vip_select_starthost(VipAddr,ExtraArgs)
-
-vip_select_starthost(VipAddr) ->
-	CallBacks =
-		case application:get_env(cluster_supervisor,callbacks) of
-			{ok,CBList} ->
-				lists:filter(fun(X) ->
-									 case X of
-										 #cluster_supervisor_callback{type=vip_state} -> true;
-										 _ -> false end end,CBList);
-			_ -> []
-		end,
-	StartHosts0 =
-	lists:map(fun(#cluster_supervisor_callback{module=Mod,extraargs=ExtraArgs}=CB) ->
-					  try
-						  erlang:apply(Mod,vip_select_starthost,[VipAddr,ExtraArgs])
-					  catch
-						  _:Err ->
-							  error_logger:warning_msg("Error calling vip_select_starthost callback: ~p~n~p~n",[CB,Err]),
-							  ok
-					  end
-			  end,CallBacks),
-	StartHosts =
-	lists:filter(fun(Node) ->
-						 case net_adm:ping(Node) of
-							 pong -> true;
-							 _ -> false
-						 end end,StartHosts0),
-	case StartHosts of
-		[Host|_] -> Host;
-		_ -> node()
-	end.
-		
-						 
 
 vip_state(State,VipAddr) ->
 	CallBacks =

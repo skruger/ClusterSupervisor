@@ -3,7 +3,7 @@
 -record(cluster_supervisor_childspec,{name,node,supervisor,child_spec}).
 
 -record(cluster_network_address,{addr,interface,node}).
--record(cluster_network_vip,{addr,status,interface,node}).
+-record(cluster_network_vip,{addr,status,interface,node,hostnodes}).
 
 -record(network_interfaces,{node,interface,address,alias}).
 
