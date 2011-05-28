@@ -170,7 +170,7 @@ handle_cast({start_vip,Vip,inet},State) ->
 	case cluster_network_manager:find_alias_node(Addr) of
 		[#network_interfaces{interface=Int,node=Node}|_] ->
 			NewVip = Vip#cluster_network_vip{status=active,interface=Int,node=Node},
-			cluster_supervisor_callback:vip_state({change_node,Addr,Vip#cluster_network_vip.node,Node,Vip},Addr),
+			cluster_supervisor_callback:vip_state({change_node,Vip#cluster_network_vip.node,Node,Vip},Addr),
 			error_logger:warning_msg("Vip already found running!  Updating vip information.~nOld: ~p~nNew: ~p~n",[Vip,NewVip]),
 			mnesia:transaction(fun() -> mnesia:write(NewVip) end),
 			{noreply,State};
@@ -281,7 +281,6 @@ start_vip(_Vip,inet,[]) ->
 start_vip(#cluster_network_vip{addr=Addr}=Vip,inet,[Node|RNodes]) ->
 	case catch rpc:call(Node,?MODULE,start_vip_rpc,[Vip,inet]) of
 		ok ->
-			cluster_supervisor_callback:vip_state({up,Node,Vip},Addr),
 			Node;
 		_ ->
 			error_logger:warning_msg("Vip ~p unable to start on node ~p~n", [Addr,Node]),
@@ -292,6 +291,7 @@ start_vip_rpc(#cluster_network_vip{addr=Addr}=Vip,inet) ->
 	IfCfgCmd = cluster_conf:get(ifconfig_script,?DEFAULT_IFCFG),
 	IfCfg = io_lib:format("~s ~s up ~s",[IfCfgCmd,get_vip_alias(Addr),cluster_network_manager:ip_tuple_to_list(Addr)]),
 	Ret = os:cmd(IfCfg),
+	cluster_supervisor_callback:vip_state({up,node(),Vip},Addr),
 	error_logger:error_msg("Starting vip on ~p: ~p~n~p~n~p~n",[node(),Vip,lists:flatten(IfCfg),Ret]),
 	ok.
 
@@ -325,6 +325,8 @@ stop_local_vips(State) ->
 	lists:filter(fun(Int) -> Int#network_interfaces.alias end,cluster_network_manager:discover_node_interfaces(local)),
 	lists:foreach(fun(IntRec) ->
 						  Iface = IntRec#network_interfaces.interface,
+						  [Vip|_] = mnesia:dirty_index_read(cluster_network_vip,Iface,#cluster_network_vip.interface),
+						  cluster_supervisor_callback:vip_state({down,node(),Vip},Vip#cluster_network_vip.addr),
 						  IfCfgCmd = State#state.ifconfig_script,
 						  IfCfg = io_lib:format("~s ~s down",[IfCfgCmd,Iface]),
 						  Ret = os:cmd(IfCfg),
