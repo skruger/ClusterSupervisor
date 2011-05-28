@@ -40,6 +40,13 @@ get(Key,Default) ->
 start_link() ->
 	start_link(get_clusterconfig()).
 
+start_link(none) ->
+	case application:get_env(cluster_supervisor,cluster_config) of
+		{ok,Config} ->
+			gen_server:start_link({local,?MODULE},?MODULE,#state{config_terms=Config},[]);
+		Error ->
+			error_logger:error_msg("Could not start cluster_conf.  No -clusterconfig given at command line and app env cluster_config not given.~p~n~p",[Error])
+	end;
 start_link(Config) ->
 	try
 		case file:consult(Config) of
@@ -131,7 +138,7 @@ handle_info(_Info, State) ->
 %% Description: Shutdown the server
 %% Returns: any (ignored by gen_server)
 %% --------------------------------------------------------------------
-terminate(Reason, State) ->
+terminate(_Reason, _State) ->
     ok.
 
 %% --------------------------------------------------------------------
@@ -139,7 +146,7 @@ terminate(Reason, State) ->
 %% Purpose: Convert process state when code is changed
 %% Returns: {ok, NewState}
 %% --------------------------------------------------------------------
-code_change(OldVsn, State, Extra) ->
+code_change(_OldVsn, State, _Extra) ->
     {ok, State}.
 
 %% --------------------------------------------------------------------

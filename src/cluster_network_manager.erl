@@ -53,7 +53,10 @@ discover_node_interfaces(local) ->
 	discover_node_interfaces(node());
 discover_node_interfaces(Node) ->
 	try
-		gen_server:call({?MODULE,Node},get_interfaces)
+		% Use rpc call because gen_server instance of this module may not be running when
+		% trying to find interfaces to shutdown.
+		%gen_server:call({?MODULE,Node},get_interfaces)
+		rpc:call(Node,?MODULE,get_interface_proplist,[],1000)
 	catch
 		_:Err ->
 			error_logger:error_msg("Error when discovering node interfaces.  ~p~n",[Err]),
@@ -102,7 +105,7 @@ init([]) ->
 	mnesia:create_table(cluster_network_vip,[{attributes,record_info(fields,cluster_network_vip)}]),
 	mnesia:change_table_copy_type(cluster_network_vip,node(),disc_copies),
 %% 	spawn(cluster_vip_manager,register,[]),
-	cluster_vip_manager:register(),
+%% 	cluster_vip_manager:register(),
 	{ok, #state{}}.
 
 %% --------------------------------------------------------------------

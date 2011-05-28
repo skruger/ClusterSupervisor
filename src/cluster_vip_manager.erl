@@ -13,9 +13,9 @@
 -include("cluster_supervisor.hrl").
 %% --------------------------------------------------------------------
 %% External exports
--export([register/0,start_link/0]).
+-export([start_link/0]).
 
--export([add_vip/1,enable_vip/1,disable_vip/1,get_vips/0,get_vip_alias/1]).
+-export([add_vip/1,enable_vip/1,disable_vip/1,get_vips/0,get_vip_alias/1,status/0]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2, code_change/3]).
@@ -26,22 +26,16 @@
 %% External functions
 %% ====================================================================
 
-%%  Call on initial startup to make sure vip manager is running.
-register() ->
-	F1 = fun() ->
-				 receive a -> a
-				 after 2000 ->
-				 
-						 cluster_supervisor:add_childspec(vip,cluster_supervisor_sup,
-														  {?MODULE,{?MODULE,start_link,[]},
-														   permanent,5000,worker,[]}),
-						 cluster_supervisor:force_election(vip)
-				 end
-		 end,
-	spawn(F1).
-
 start_link() ->
-	gen_server:start_link({global,?MODULE},?MODULE,[],[]).
+	IdLock = {?MODULE,self()},
+	global:trans(IdLock,
+				 fun() ->
+						 case global:whereis_name(?MODULE) of
+							 undefined ->
+								 gen_server:start_link({global,?MODULE},?MODULE,[],[]);
+							 Pid ->
+								 {ok,Pid}
+						 end end).
 
 %% ====================================================================
 %% Server functions
@@ -55,6 +49,9 @@ enable_vip({ip,_}=Addr) ->
 
 disable_vip({ip,_}=Addr) ->
 	gen_server:call({global,?MODULE},{disable_vip,Addr}).
+
+status() ->
+	gen_server:call({global,?MODULE},{status}).
 
 %% --------------------------------------------------------------------
 %% Function: init/1
@@ -105,7 +102,8 @@ handle_call({disable_vip,IP},From,State) ->
 handle_call({set_vip_status,IP,Status},_From,State) ->
 	F1 = fun() ->
 				 case mnesia:read(cluster_network_vip,IP) of
-					 [#cluster_network_vip{addr=IP}=VIP|_] ->
+					 [#cluster_network_vip{addr=IP,node=Node}=VIP|_] ->
+						 gen_server:cast({?MODULE,Node},{stop_vip,VIP,inet_version(IP)}),
 						 mnesia:write(VIP#cluster_network_vip{status=Status});
 					 _ -> mnesia:abort(invalid_vip)
 				 end
@@ -118,6 +116,8 @@ handle_call({set_vip_status,IP,Status},_From,State) ->
 		Error ->
 			{reply,Error,State}
 	end;
+handle_call({status},_From,State) ->
+	{reply,State,State};
 handle_call(_Request, _From, State) ->
     Reply = ok,
     {reply, Reply, State}.
@@ -134,15 +134,19 @@ handle_cast({check_vip,VipKey},State) ->
 	case mnesia:dirty_read(cluster_network_vip,VipKey) of
 		[#cluster_network_vip{status=disabled,interface=undefined,node=undefined}|_] ->
 			ok;
-		[#cluster_network_vip{status=disabled}=Vip|_] ->
-			gen_server:cast(self(),{stop_vip,Vip});
+		[#cluster_network_vip{status=disabled,addr=Addr}=Vip|_] ->
+			gen_server:cast(self(),{stop_vip,Vip,inet_version(Addr)});
 		[#cluster_network_vip{status=active}=Vip|_] ->
 			gen_server:cast(self(),{check_active_vip_details,Vip});
-		[Vip|_] ->
-		gen_server:cast(self(),{start_vip,Vip})
+		[#cluster_network_vip{addr=Addr}=Vip|_] ->
+		gen_server:cast(self(),{start_vip,Vip,inet_version(Addr)})
 	end,
 	{noreply,State};
-handle_cast({start_vip,Vip},State) ->
+handle_cast({start_vip,Vip,inet6},State) ->
+	Addr = Vip#cluster_network_vip.addr,
+	error_logger:error_msg("Can't start inet6 vip: ~p~n",[Addr]),
+	{noreply,State};
+handle_cast({start_vip,Vip,inet},State) ->
 	Addr = Vip#cluster_network_vip.addr,
 	case cluster_network_manager:find_alias_node(Addr) of
 		[#network_interfaces{interface=Int,node=Node}|_] ->
@@ -158,7 +162,11 @@ handle_cast({start_vip,Vip},State) ->
 			error_logger:info_msg("ifcfg: ~p~nReturned:~n~p~n",[lists:flatten(IfCfg),Ret]),
 			{noreply,State}
 	end;
-handle_cast({stop_vip,Vip},State) ->
+handle_cast({stop_vip,Vip,inet6},State) ->
+	Addr = Vip#cluster_network_vip.addr,
+	error_logger:error_msg("Can't stop inet6 vip: ~p~n",[Addr]),
+	{noreply,State};
+handle_cast({stop_vip,Vip,inet},State) ->
 	Addr = Vip#cluster_network_vip.addr,
 	case cluster_network_manager:find_alias_node(Addr) of
 		[#network_interfaces{interface=Iface}=VipRec|_] when VipRec#network_interfaces.node == node() ->
@@ -183,7 +191,7 @@ handle_cast({check_active_vip_details,#cluster_network_vip{addr=Addr,interface=I
 		Other ->
 			Node=cluster_supervisor_callback:vip_select_starthost(Addr),
 			error_logger:error_msg("Vip not found on any running nodes!  Trying to start on ~p!~nfind_alias_node() returned ~p~nVip: ~p~n",[Node,Other,Vip]),
-			gen_server:cast({?MODULE,Node},{start_vip,Vip}),
+			gen_server:cast({?MODULE,Node},{start_vip,Vip,inet_version(Addr)}),
 			{noreply,State}
 	end;
 handle_cast(stop_local_vips,State) ->
@@ -276,3 +284,10 @@ stop_local_vips(State) ->
 						  error_logger:error_msg("Stopping local vip: ~p~n~p~n~p~n",[IntRec,lists:flatten(IfCfg),Ret])
 				  end,Interfaces),
 	ok.
+
+inet_version({ip,IP}) ->
+	inet_version(IP);
+inet_version({_,_,_,_}) ->
+	inet;
+inet_version({_,_,_,_,_,_,_,_}) ->
+	inet6.

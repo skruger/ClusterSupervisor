@@ -2,9 +2,9 @@
 %%% Author  : skruger
 %%% Description :
 %%%
-%%% Created : Feb 2, 2011
+%%% Created : Mar 4, 2011
 %%% -------------------------------------------------------------------
--module(cluster_supervisor_sup).
+-module(service_manager_sup).
 
 -behaviour(supervisor).
 %% --------------------------------------------------------------------
@@ -14,7 +14,7 @@
 %% --------------------------------------------------------------------
 %% External exports
 %% --------------------------------------------------------------------
--export([start_link/1]).
+-export([]).
 
 %% --------------------------------------------------------------------
 %% Internal exports
@@ -36,8 +36,7 @@
 %% External functions
 %% ====================================================================
 
-start_link(Args) ->
-	supervisor:start_link({local,?MODULE},?MODULE,Args).
+
 
 %% ====================================================================
 %% Server functions
@@ -48,20 +47,10 @@ start_link(Args) ->
 %%          ignore                          |
 %%          {error, Reason}
 %% --------------------------------------------------------------------
-init(_Args) ->
-    {ok,{{one_for_one,2,5}, [
-							 {cluster_conf,{cluster_conf,start_link,[]},
-							  permanent,5000,worker,[]},
-							 {cluster_supervisor_local,{cluster_supervisor_local,start_link,[]},
-							  permanent,5000,worker,[]},
-							 {cluster_vip,{cluster_supervisor,start_link,[vip]},
-							  permanent,5000,worker,[]},
-							{cluster_vip_manager,{cluster_vip_manager,start_link,[]},
-							  permanent,5000,worker,[]},
-							 {cluster_network_manager,{cluster_network_manager,start_link,[]},
-							  permanent,5000,worker,[]}
-							 
-							 ]}}.
+init([]) ->
+    AChild = {'AName',{'AModule',start_link,[]},
+	      permanent,2000,worker,['AModule']},
+    {ok,{{one_for_all,0,1}, [AChild]}}.
 
 %% ====================================================================
 %% Internal functions
