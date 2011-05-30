@@ -34,6 +34,7 @@ start_link() ->
 							 undefined ->
 								 gen_server:start_link({global,?MODULE},?MODULE,[],[]);
 							 Pid ->
+								 erlang:link(Pid),
 								 {ok,Pid}
 						 end end).
 

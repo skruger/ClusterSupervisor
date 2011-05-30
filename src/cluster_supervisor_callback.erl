@@ -35,6 +35,7 @@ vip_state(State,VipAddr) ->
 										 _ -> false end end,CBList);
 			_ -> []
 		end,
+	error_logger:warning_msg("Running ~p callbacks.~n~p~n",[length(CallBacks),CallBacks]),
 	lists:foreach(fun(#cluster_supervisor_callback{module=Mod,extraargs=ExtraArgs}=CB) ->
 						  try
 							  erlang:apply(Mod,vip_state,[State,VipAddr,ExtraArgs])
@@ -46,11 +47,15 @@ vip_state(State,VipAddr) ->
 				  end,CallBacks).
 
 
+%% Adding the same module twice results in replacing the previously added version.
 add(Type,Module,ExtraArgs) ->
 	CallBacks = 
 		case application:get_env(cluster_supervisor,callbacks) of
 			{ok,CBList} when is_list(CBList) ->
-				CBList;
+				lists:filter(fun(X) ->
+									 case X of
+										 #cluster_supervisor_callback{module=Module,type=Type} -> false;
+										 _ -> true end end,CBList);
 			None -> 
 				error_logger:error_msg("Replacing empty callback value: ~p~n",[None]),
 				[]
