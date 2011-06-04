@@ -103,9 +103,11 @@ init([]) ->
 	error_logger:info_msg("Starting ~p~n",[?MODULE]),
 	mnesia:create_table(cluster_network_address,[{attributes,record_info(fields,cluster_network_address)}]),
 	mnesia:change_table_copy_type(cluster_network_address,node(),disc_copies),
+	mnesia:add_table_copy(cluster_network_address,node(),disc_copies),
 	mnesia:create_table(cluster_network_vip,[{attributes,record_info(fields,cluster_network_vip)}]),
 	mnesia:add_table_index(cluster_network_vip,interface),
 	mnesia:change_table_copy_type(cluster_network_vip,node(),disc_copies),
+	mnesia:add_table_copy(cluster_network_vip,node(),disc_copies),
 %% 	spawn(cluster_vip_manager,register,[]),
 %% 	cluster_vip_manager:register(),
 	{ok, #state{}}.
