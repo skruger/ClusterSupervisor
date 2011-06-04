@@ -100,6 +100,7 @@ start_link() ->
 %%          {stop, Reason}
 %% --------------------------------------------------------------------
 init([]) ->
+	error_logger:info_msg("Starting ~p~n",[?MODULE]),
 	mnesia:create_table(cluster_network_address,[{attributes,record_info(fields,cluster_network_address)}]),
 	mnesia:change_table_copy_type(cluster_network_address,node(),disc_copies),
 	mnesia:create_table(cluster_network_vip,[{attributes,record_info(fields,cluster_network_vip)}]),
