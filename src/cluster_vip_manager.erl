@@ -207,12 +207,12 @@ handle_cast({check_active_vip_details,#cluster_network_vip{addr=Addr,interface=I
 handle_cast({fix_vip_node,VIP,[TryNode|_R]},State) when VIP#cluster_network_vip.node == TryNode ->
 	{noreply,State};
 handle_cast({fix_vip_node,VIP,[TryNode|R]},State) ->
-	case net_adm:ping(TryNode) of
-		pong ->
+	case lists:any(fun(N) -> N == TryNode end, mnesia:system_info(running_db_nodes)) of
+		true ->
 			gen_server:cast(self(),{stop_vip,VIP,inet_version(VIP#cluster_network_vip.addr)}),
 			gen_server:cast(self(),{check_active_vip_details,VIP}),
 			ok;
-		_ ->
+		false ->
 			% Trying next node in list.
 			gen_server:cast(self(),{fix_vip_node,VIP,R})
 	end,
