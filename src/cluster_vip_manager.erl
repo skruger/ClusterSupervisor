@@ -15,7 +15,7 @@
 %% External exports
 -export([start_link/0]).
 
--export([add_vip/1,enable_vip/1,disable_vip/1,get_vips/0,get_vip_alias/1,status/0,start_vip_rpc/2,set_hostnodes/2]).
+-export([add_vip/1,enable_vip/1,disable_vip/1,get_vips/0,get_vip_alias/1,status/0,start_vip_rpc/2,set_hostnodes/2,stop_local_vips/0]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2, code_change/3]).
