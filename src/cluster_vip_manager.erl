@@ -221,7 +221,12 @@ handle_cast({check_active_vip_details,#cluster_network_vip{addr=Addr,interface=I
 			{noreply,State}
 	end;
 handle_cast(stop_local_vips,State) ->
-	stop_local_vips(State),
+	try
+		stop_local_vips(State)
+	catch
+		_:Err ->
+			error_logger:error_msg("Error stopping local vips: ~n~p~n",[Err])
+	end,
 	{noreply,State};
 handle_cast(Msg, State) ->
 	error_logger:info_msg("Received unknown message: ~p~n",[Msg]),
