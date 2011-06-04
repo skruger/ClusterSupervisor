@@ -169,10 +169,12 @@ handle_cast({stop_vip,Vip,inet6},State) ->
 handle_cast({stop_vip,Vip,inet},State) ->
 	Addr = Vip#cluster_network_vip.addr,
 	case cluster_network_manager:find_alias_node(Addr) of
-		[#network_interfaces{interface=Iface}=VipRec|_] when VipRec#network_interfaces.node == node() ->
-			IfCfgCmd = cluster_conf:get(ifconfig_script,?DEFAULT_IFCFG),
+		[#network_interfaces{interface=Iface,node=Node}=VipRec|_] when VipRec#network_interfaces.node == node() ->
+			IfCfgCmd = rpc:call(Node,cluster_conf,get,[ifconfig_script,?DEFAULT_IFCFG]),
+%% 			IfCfgCmd = cluster_conf:get(),
+%% 			Ret = os:cmd(IfCfg),
 			IfCfg = io_lib:format("~s ~s down",[IfCfgCmd,Iface]),
-			Ret = os:cmd(IfCfg),
+			Ret = rpc:call(Node,os,cmd,[IfCfg]),
 			cluster_supervisor_callback:vip_state({down,node(),Vip},Addr),
 			error_logger:error_msg("Stopping vip on current node: ~p~n~p~n~p~n",[Vip,lists:flatten(IfCfg),Ret]);
 		_AliasNode ->
@@ -184,7 +186,8 @@ handle_cast({check_active_vip_details,#cluster_network_vip{addr=Addr,interface=I
 	[PreferredNode|_] = HostNodes,
 	case cluster_network_manager:find_alias_node(Addr) of
 		[#network_interfaces{interface=Int,node=Node}|_] when Node /= PreferredNode ->
-			error_logger:info_msg("vip ~p is not running on its preferred node.~n",[Addr]),
+%% 			error_logger:info_msg("vip ~p is not running on its preferred node.~n",[Addr]),
+			gen_server:cast(self(),{fix_vip_node,Vip,HostNodes}),
 			{noreply,State};
 		[#network_interfaces{interface=Int,node=Node}|_] ->
 			{noreply,State};
@@ -201,6 +204,20 @@ handle_cast({check_active_vip_details,#cluster_network_vip{addr=Addr,interface=I
 			_StartedNode = start_vip(Vip,inet_version(Addr),HostNodes),
 			{noreply,State}
 	end;
+handle_cast({fix_vip_node,VIP,[TryNode|_R]},State) when VIP#cluster_network_vip.node == TryNode ->
+	{noreply,State};
+handle_cast({fix_vip_node,VIP,[TryNode|R]},State) ->
+	case net_adm:ping(TryNode) of
+		pong ->
+			gen_server:cast(self(),{stop_vip,VIP,inet_version(VIP#cluster_network_vip.addr)}),
+			gen_server:cast(self(),{check_active_vip_details,VIP}),
+			ok;
+		_ ->
+			% Trying next node in list.
+			gen_server:cast(self(),{fix_vip_node,VIP,R})
+	end,
+%% 	error_logger:error_msg("Trying node: ~p~n",[TryNode]),
+	{noreply,State};
 handle_cast(stop_local_vips,State) ->
 	try
 		stop_local_vips()
