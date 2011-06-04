@@ -46,8 +46,23 @@ get_name(Name) ->
 %% Server functions
 %% ====================================================================
 
-get_quorum(Name) ->
-	gen_server:call({global,get_name(Name)},get_quorum).
+get_quorum(_Name) ->
+	QuorumSize = cluster_conf:get(quorum,1),
+	AllNodes = [node()|nodes()],
+	ClusterNodes =
+	lists:filter(fun(N) ->
+						 cluster_supervisor_local:ping({cluster_supervisor_local,N}) == pong
+				 end,AllNodes),
+%% 	error_logger:error_msg("ClusterNodes=~p~n",[ClusterNodes]),
+	case length(ClusterNodes) of
+		Count when Count >= QuorumSize ->
+			true;
+		Count ->
+			error_logger:error_msg("Unable to get quorum!  ~p members needed, ~p members active.~n",[QuorumSize,Count]),
+			false
+	end.
+
+	%gen_server:call({global,get_name(Name)},get_quorum).
 
 
 %% --------------------------------------------------------------------
