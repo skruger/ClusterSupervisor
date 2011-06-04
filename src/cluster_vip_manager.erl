@@ -181,7 +181,11 @@ handle_cast({stop_vip,Vip,inet},State) ->
 	end,
 	{noreply,State};
 handle_cast({check_active_vip_details,#cluster_network_vip{addr=Addr,interface=Int,node=Node,hostnodes=HostNodes}=Vip},State) ->
+	[PreferredNode|_] = HostNodes,
 	case cluster_network_manager:find_alias_node(Addr) of
+		[#network_interfaces{interface=Int,node=Node}|_] when Node /= PreferredNode ->
+			error_logger:info_msg("vip ~p is not running on its preferred node.~n",[Addr]),
+			{noreply,State};
 		[#network_interfaces{interface=Int,node=Node}|_] ->
 			{noreply,State};
 		[#network_interfaces{interface=NewInt,node=NewNode}|_] ->
