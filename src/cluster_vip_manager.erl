@@ -341,8 +341,13 @@ stop_local_vips() ->
 	lists:filter(fun(Int) -> Int#network_interfaces.alias end,cluster_network_manager:discover_node_interfaces(local)),
 	lists:foreach(fun(IntRec) ->
 						  Iface = IntRec#network_interfaces.interface,
-						  [Vip|_] = mnesia:dirty_index_read(cluster_network_vip,Iface,#cluster_network_vip.interface),
-						  cluster_supervisor_callback:vip_state({down,node(),Vip},Vip#cluster_network_vip.addr),
+						  try
+							  [Vip|_] = mnesia:dirty_index_read(cluster_network_vip,Iface,#cluster_network_vip.interface),
+							  cluster_supervisor_callback:vip_state({down,node(),Vip},Vip#cluster_network_vip.addr)
+						  catch
+							  _:_ ->
+								  ok
+						  end,
 						  IfCfgCmd = cluster_conf:get(ifconfig_script,?DEFAULT_IFCFG),
 						  IfCfg = io_lib:format("~s ~s down",[IfCfgCmd,Iface]),
 						  Ret = os:cmd(IfCfg),
