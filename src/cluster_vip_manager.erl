@@ -289,13 +289,19 @@ start_vip(_Vip,inet,undefined) ->
 start_vip(_Vip,inet,[]) ->
 	{error,nonodes};
 start_vip(#cluster_network_vip{addr=Addr}=Vip,inet,[Node|RNodes]) ->
-	case catch rpc:call(Node,?MODULE,start_vip_rpc,[Vip,inet]) of
-		ok ->
-			Node;
+	case cluster_supervisor_local:ping({cluster_supervisor_local,Node}) of
+		pong ->
+			case catch rpc:call(Node,?MODULE,start_vip_rpc,[Vip,inet]) of
+				ok ->
+					Node;
+				_ ->
+					error_logger:warning_msg("Vip ~p unable to start on node ~p~n", [Addr,Node]),
+					start_vip(Vip,inet,RNodes)
+			end;
 		_ ->
-			error_logger:warning_msg("Vip ~p unable to start on node ~p~n", [Addr,Node]),
 			start_vip(Vip,inet,RNodes)
 	end.
+				
 		
 start_vip_rpc(#cluster_network_vip{addr=Addr}=Vip,inet) ->
 	IfCfgCmd = cluster_conf:get(ifconfig_script,?DEFAULT_IFCFG),
