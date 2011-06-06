@@ -196,7 +196,7 @@ handle_cast({check_active_vip_details,#cluster_network_vip{addr=Addr,interface=I
 	[PreferredNode|_] = HostNodes,
 	case cluster_network_manager:find_alias_node(Addr) of
 		[#network_interfaces{interface=Int,node=Node}|_] when Node /= PreferredNode ->
-%% 			error_logger:info_msg("vip ~p is not running on its preferred node.~n",[Addr]),
+			error_logger:info_msg("vip ~p is not running on its preferred node.~n",[Addr]),
 			gen_server:cast(self(),{fix_vip_node,Vip,HostNodes}),
 			{noreply,State};
 		[#network_interfaces{interface=Int,node=Node}|_] ->
@@ -207,21 +207,24 @@ handle_cast({check_active_vip_details,#cluster_network_vip{addr=Addr,interface=I
 			mnesia:transaction(fun() -> mnesia:write(NewVip) end),
 			{noreply,State};
 		Other ->
-			error_logger:error_msg("Vip not found on any running nodes!  Trying to start on ~p!~nfind_alias_node() returned ~p~nVip: ~p~n",[Node,Other,Vip]),
+			error_logger:info_msg("Vip not found on any running nodes!  Trying to start on ~p!~nfind_alias_node() returned ~p~nVip: ~p~n",[Node,Other,Vip]),
 			StartedNode = start_vip(Vip,inet_version(Addr),HostNodes),
 			mnesia:transaction(fun() -> mnesia:write(Vip#cluster_network_vip{node=StartedNode}) end),
 			{noreply,State}
 	end;
 handle_cast({fix_vip_node,VIP,[TryNode|_R]},State) when VIP#cluster_network_vip.node == TryNode ->
+	error_logger:info_msg("No candidate nodes were found alive for vip ~p~n",[VIP#cluster_network_vip.addr]),
+	{noreply,State};
+handle_cast({fix_vip_node,VIP,[TryNode|_R]},State) when TryNode == node() ->
+	gen_server:cast(self(),{restart_vip,VIP}),
 	{noreply,State};
 handle_cast({fix_vip_node,VIP,[TryNode|R]},State) ->
 	case lists:any(fun(N) -> N == TryNode end, mnesia:system_info(running_db_nodes)) of
 		true ->
 			case cluster_supervisor_local:ping({cluster_supervisor_local,TryNode}) of
 				pong ->
-					gen_server:cast(self(),{stop_vip,VIP,inet_version(VIP#cluster_network_vip.addr)}),
-					gen_server:cast(self(),{check_active_vip_details,VIP}),
-					ok;
+					error_logger:info_msg("Stopping ~p to try starting on more preferred node ~p.",[VIP#cluster_network_vip.addr,TryNode]),
+					gen_server:cast(self(),{restart_vip,VIP});
 				_ ->
 					% Trying next node in list.
 					gen_server:cast(self(),{fix_vip_node,VIP,R})
@@ -231,6 +234,10 @@ handle_cast({fix_vip_node,VIP,[TryNode|R]},State) ->
 			gen_server:cast(self(),{fix_vip_node,VIP,R})
 	end,
 %% 	error_logger:error_msg("Trying node: ~p~n",[TryNode]),
+	{noreply,State};
+handle_cast({restart_vip,VIP},State) ->
+	gen_server:cast(self(),{stop_vip,VIP,inet_version(VIP#cluster_network_vip.addr)}),
+	gen_server:cast(self(),{check_active_vip_details,VIP}),
 	{noreply,State};
 handle_cast(stop_local_vips,State) ->
 	try
