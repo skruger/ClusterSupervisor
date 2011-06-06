@@ -216,6 +216,7 @@ handle_cast({fix_vip_node,VIP,[TryNode|_R]},State) when VIP#cluster_network_vip.
 	error_logger:info_msg("No candidate nodes were found alive for vip ~p~n",[VIP#cluster_network_vip.addr]),
 	{noreply,State};
 handle_cast({fix_vip_node,VIP,[TryNode|_R]},State) when TryNode == node() ->
+	error_logger:info_msg("Start vip ~p on current node ~p.~n",[VIP#cluster_network_vip.addr,node()]),
 	gen_server:cast(self(),{restart_vip,VIP}),
 	{noreply,State};
 handle_cast({fix_vip_node,VIP,[TryNode|R]},State) ->
@@ -236,6 +237,7 @@ handle_cast({fix_vip_node,VIP,[TryNode|R]},State) ->
 %% 	error_logger:error_msg("Trying node: ~p~n",[TryNode]),
 	{noreply,State};
 handle_cast({restart_vip,VIP},State) ->
+	error_logger:info_msg("Restarting vip ~p.~n",[VIP#cluster_network_vip.addr]),
 	gen_server:cast(self(),{stop_vip,VIP,inet_version(VIP#cluster_network_vip.addr)}),
 	gen_server:cast(self(),{check_active_vip_details,VIP}),
 	{noreply,State};
