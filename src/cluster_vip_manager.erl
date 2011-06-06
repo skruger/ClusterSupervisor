@@ -239,7 +239,7 @@ handle_cast({fix_vip_node,VIP,[TryNode|R]},State) ->
 handle_cast({restart_vip,VIP},State) ->
 	error_logger:info_msg("Restarting vip ~p.~n",[VIP#cluster_network_vip.addr]),
 	gen_server:cast(self(),{stop_vip,VIP,inet_version(VIP#cluster_network_vip.addr)}),
-	gen_server:cast(self(),{check_active_vip_details,VIP}),
+%% 	gen_server:cast(self(),{check_active_vip_details,VIP}),
 	{noreply,State};
 handle_cast(stop_local_vips,State) ->
 	try
