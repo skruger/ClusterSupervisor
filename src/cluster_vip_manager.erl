@@ -208,7 +208,8 @@ handle_cast({check_active_vip_details,#cluster_network_vip{addr=Addr,interface=I
 			{noreply,State};
 		Other ->
 			error_logger:error_msg("Vip not found on any running nodes!  Trying to start on ~p!~nfind_alias_node() returned ~p~nVip: ~p~n",[Node,Other,Vip]),
-			_StartedNode = start_vip(Vip,inet_version(Addr),HostNodes),
+			StartedNode = start_vip(Vip,inet_version(Addr),HostNodes),
+			mnesia:transaction(fun() -> mnesia:write(Vip#cluster_network_vip{node=StartedNode}) end),
 			{noreply,State}
 	end;
 handle_cast({fix_vip_node,VIP,[TryNode|_R]},State) when VIP#cluster_network_vip.node == TryNode ->
