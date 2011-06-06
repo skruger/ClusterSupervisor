@@ -182,6 +182,16 @@ handle_cast({stop_vip,Vip,inet},State) ->
 			ok
 	end,
 	{noreply,State};
+handle_cast({check_active_vip_details,#cluster_network_vip{addr=Addr}=Vip},State) when Vip#cluster_network_vip.hostnodes == [] ->
+	error_logger:error_msg("Vip ~p does not have any candidate host nodes.~n",[Addr]),
+	case cluster_network_manager:find_alias_node(Addr) of
+		[#network_interfaces{node=Node}|_] ->
+			error_logger:error_msg("Vip ~p found running on unauthorized node ~p!  Stopping.~n",[Addr,Node]),
+			gen_server:cast(self(),{stop_vip,Vip,inet_version(Addr)});
+		_ ->
+			ok
+	end,
+	{noreply,State};
 handle_cast({check_active_vip_details,#cluster_network_vip{addr=Addr,interface=Int,node=Node,hostnodes=HostNodes}=Vip},State) ->
 	[PreferredNode|_] = HostNodes,
 	case cluster_network_manager:find_alias_node(Addr) of
@@ -195,9 +205,6 @@ handle_cast({check_active_vip_details,#cluster_network_vip{addr=Addr,interface=I
 			NewVip = Vip#cluster_network_vip{interface=NewInt,node=NewNode},
 			error_logger:error_msg("Vip details didn't match!~nOld: ~p~nNew: ~p~n",[Vip,NewVip]),
 			mnesia:transaction(fun() -> mnesia:write(NewVip) end),
-			{noreply,State};
-		_Other when HostNodes == [] ->
-			error_logger:error_msg("Vip ~p does not have any candidate host nodes.~n",[Addr]),
 			{noreply,State};
 		Other ->
 			error_logger:error_msg("Vip not found on any running nodes!  Trying to start on ~p!~nfind_alias_node() returned ~p~nVip: ~p~n",[Node,Other,Vip]),
