@@ -21,6 +21,8 @@
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2, code_change/3]).
 
+-import(clusterlib,[inet_parse/1]).
+
 -record(state, {}).
 
 
@@ -45,9 +47,26 @@ ip_list_to_tuple(Ip) ->
 			{error,Err}
 	end.
 
-ip_tuple_to_list({ip,IP}) ->
-	lists:flatten(io_lib:format("~p.~p.~p.~p",tuple_to_list(IP))).
+ip_tuple_to_list({ip,{_,_,_,_}=IP}) ->
+	lists:flatten(io_lib:format("~p.~p.~p.~p",tuple_to_list(IP)));
+ip_tuple_to_list({ip,{_,_,_,_,_,_,_,_}=IP}) ->
+	collapsev6(lists:flatten(io_lib:format("~.16B:~.16B:~.16B:~.16B:~.16B:~.16B:~.16B:~.16B",tuple_to_list(IP))),[]).
 
+collapsev6([],Acc) ->
+	lists:reverse(Acc);
+collapsev6([$0,$:|R],[]) ->  % detect 0 in first group
+	collapsev62([$:|R],":");
+collapsev6([$:,$0,$:|R],Acc) ->
+	collapsev62([$:|R],":"++Acc);
+collapsev6([C|R],Acc) ->
+	collapsev6(R,[C|Acc]).
+
+collapsev62([$:,$0,$:|R],Acc) ->
+	collapsev62([$:|R],Acc);
+collapsev62([$:,$0],Acc) -> % detect 0 in last group
+	collapsev6([],[$:|Acc]);
+collapsev62(R,Acc) ->
+	collapsev6([],lists:reverse(R)++Acc).
 
 discover_node_interfaces(local) ->
 	discover_node_interfaces(node());
@@ -82,6 +101,7 @@ find_alias_node(Address) ->
 								 true;
 							 _ -> false
 						 end end,Interfaces).
+	
 	
 
 %% ====================================================================
@@ -186,7 +206,7 @@ get_interface_proplist(Interfaces) ->
 					  #network_interfaces{node=node(),interface=list_to_atom(Iface),
 										  address=ip_list_to_tuple(get_interface_addr(Iface)),
 										  alias=is_alias_interface(Iface)}
-			  end,Interfaces).
+			  end,Interfaces)++get_inet6_addresses().
 
 is_alias_interface(Iface) ->
 	case string:str(Iface,":") of
@@ -211,3 +231,12 @@ get_addresses() ->
 			[]
 	end.
 
+get_inet6_addresses() ->
+	IPCmd = cluster_conf:get(ip_script,?DEFAULT_IP_SCRIPT),
+	IFace = cluster_conf:get(listen_interface,"eth0"),
+	IPExec = io_lib:format("~s -6 addr show ~s | grep global | sed -e \"s?.*inet6\ ??g\" | cut -f 1 -d \"/\"",[IPCmd,IFace]),
+	IPStr = os:cmd(IPExec),
+	Addrs = string:tokens(IPStr,"\n"),
+	[#network_interfaces{address={ip,inet_parse(A)},node=node(),interface=IFace,alias=true} || A <- Addrs].
+	
+	

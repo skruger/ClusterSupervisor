@@ -10,6 +10,7 @@
 -record(cluster_supervisor_callback,{type,module,extraargs}).
 
 -define(DEFAULT_IFCFG,"/sbin/ifconfig").
+-define(DEFAULT_IP_SCRIPT,"/sbin/ip").
 
 %% -define(CRITICAL(X,Y), surrogate_log:append(0,?MODULE,lists:flatten(io_lib:format(X,Y)))).
 %% -define(ERROR_MSG(X,Y), surrogate_log:append(1,?MODULE,lists:flatten(io_lib:format(X,Y)))).

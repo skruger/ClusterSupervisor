@@ -20,6 +20,8 @@
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2, code_change/3]).
 
+-import(clusterlib,[inet_version/1]).
+
 -record(state, {check_timer,ifconfig_script}).
 
 %% ====================================================================
@@ -166,12 +168,12 @@ handle_cast({check_vip,VipKey},State) ->
 			gen_server:cast(self(),{check_active_vip_details,Vip})
 	end,
 	{noreply,State};
-handle_cast({stop_vip,Vip,inet6},State) ->
-	Addr = Vip#cluster_network_vip.addr,
-	error_logger:error_msg("Can't stop inet6 vip: ~p~n",[Addr]),
-	{noreply,State};
-handle_cast({stop_vip,Vip,inet},State) ->
-	stop_vip(Vip,inet),
+%% handle_cast({stop_vip,Vip,inet6},State) ->
+%% 	Addr = Vip#cluster_network_vip.addr,
+%% 	error_logger:error_msg("Can't stop inet6 vip: ~p~n",[Addr]),
+%% 	{noreply,State};
+handle_cast({stop_vip,Vip,Inet},State) ->
+	stop_vip(Vip,Inet),
 	{noreply,State};
 handle_cast({check_active_vip_details,#cluster_network_vip{addr=Addr}=Vip},State) when Vip#cluster_network_vip.hostnodes == [] ->
 	error_logger:error_msg("Vip ~p does not have any candidate host nodes.~n",[Addr]),
@@ -292,22 +294,25 @@ code_change(_OldVsn, State, _Extra) ->
 %%% Internal functions
 %% --------------------------------------------------------------------
 
-start_vip(_Vip,inet,undefined) ->
+% ip addr add 2001:470:865a:1::2001 dev eth0
+% ip addr del 2001:470:865a:1::2001 dev eth0
+
+start_vip(_Vip,_Inet,undefined) ->
 	{error,nonodes};
-start_vip(_Vip,inet,[]) ->
+start_vip(_Vip,_Inet,[]) ->
 	{error,nonodes};
-start_vip(#cluster_network_vip{addr=Addr}=Vip,inet,[Node|RNodes]) ->
+start_vip(#cluster_network_vip{addr=Addr}=Vip,Inet,[Node|RNodes]) ->
 	case cluster_supervisor_local:ping({cluster_supervisor_local,Node}) of
 		pong ->
-			case catch rpc:call(Node,?MODULE,start_vip_rpc,[Vip,inet]) of
+			case catch rpc:call(Node,?MODULE,start_vip_rpc,[Vip,Inet]) of
 				ok ->
 					Node;
 				_ ->
 					error_logger:warning_msg("Vip ~p unable to start on node ~p~n", [Addr,Node]),
-					start_vip(Vip,inet,RNodes)
+					start_vip(Vip,Inet,RNodes)
 			end;
 		_ ->
-			start_vip(Vip,inet,RNodes)
+			start_vip(Vip,Inet,RNodes)
 	end.
 				
 		
@@ -317,6 +322,13 @@ start_vip_rpc(#cluster_network_vip{addr=Addr}=Vip,inet) ->
 	Ret = os:cmd(IfCfg),
 	cluster_supervisor_callback:vip_state({up,node(),Vip},Addr),
 	error_logger:error_msg("Starting vip on ~p: ~p~n~p~n~p~n",[node(),Vip,lists:flatten(IfCfg),Ret]),
+	ok;
+start_vip_rpc(#cluster_network_vip{addr=Addr}=Vip,inet6) ->
+	IpCmd = cluster_conf:get(ip_script,?DEFAULT_IFCFG),
+	Iface = cluster_conf:get(listen_interface,"eth0"),
+	IpExec = io_lib:format("~s addr add ~s/64 dev ~s",[IpCmd,cluster_network_manager:ip_tuple_to_list(Addr),Iface]),
+	Ret = os:cmd(IpExec),
+	error_logger:error_msg("Starting vip on ~p: ~p~n~p~n~p~n",[node(),Vip,lists:flatten(IpExec),Ret]),
 	ok.
 
 stop_vip(Vip,Inet) ->
@@ -345,17 +357,26 @@ stop_vip(Vip,Inet) ->
 			error
 	end.
 		
-stop_vip_rpc(#cluster_network_vip{addr=Addr}=Vip,inet6) ->
-	error_logger:error_msg("Stopping inet6 vips is not supported: ~p~n~p~n",[Addr,Vip]),
-	{error,einval};
-stop_vip_rpc(#cluster_network_vip{addr=Addr}=Vip,inet) ->
+%% stop_vip_rpc(#cluster_network_vip{addr=Addr}=Vip,inet6) ->
+%% 	error_logger:error_msg("Stopping inet6 vips is not supported: ~p~n~p~n",[Addr,Vip]),
+%% 	{error,einval};
+stop_vip_rpc(#cluster_network_vip{addr=Addr}=Vip,Inet) ->
 	case cluster_network_manager:find_alias_node(Addr) of
 		[#network_interfaces{interface=Iface}=VipRec|_] when VipRec#network_interfaces.node == node() ->
-			IfCfgCmd = cluster_conf:get(ifconfig_script,?DEFAULT_IFCFG),
-			IfCfg = io_lib:format("~s ~s down",[IfCfgCmd,Iface]),
-			Ret = os:cmd(IfCfg),
-			cluster_supervisor_callback:vip_state({down,node(),Vip},Addr),
-			error_logger:error_msg("Stopping vip on ~p: ~p~n~p~n~p~n",[node(),Vip,lists:flatten(IfCfg),Ret]),
+			case Inet of
+				inet ->
+					IfCfgCmd = cluster_conf:get(ifconfig_script,?DEFAULT_IFCFG),
+					IfCfg = io_lib:format("~s ~s down",[IfCfgCmd,Iface]),
+					Ret = os:cmd(IfCfg),
+					cluster_supervisor_callback:vip_state({down,node(),Vip},Addr),
+					error_logger:error_msg("Stopping vip on ~p: ~p~n~p~n~p~n",[node(),Vip,lists:flatten(IfCfg),Ret]);
+				inet6 ->
+					IpCmd = cluster_conf:get(ip_script,?DEFAULT_IFCFG),
+					Iface = cluster_conf:get(listen_interface,"eth0"),
+					IpExec = lists:flatten(io_lib:format("~s -6 addr del ~s/64 dev ~s",[IpCmd,cluster_network_manager:ip_tuple_to_list(Addr),Iface])),
+					Ret = os:cmd(IpExec),
+					error_logger:error_msg("Trying to stop inet6 vip ~p~n~p~n~p~n~p~n",[Addr,Vip,IpExec,Ret])
+			end,
 			ok;
 		Other ->
 			error_logger:info_msg("stop_vip_rpc got unexpected response to find_alias_node()~nFound: ~p~n",[Other]),
@@ -392,23 +413,31 @@ stop_local_vips() ->
 	lists:filter(fun(Int) -> Int#network_interfaces.alias end,cluster_network_manager:discover_node_interfaces(local)),
 	lists:foreach(fun(IntRec) ->
 						  Iface = IntRec#network_interfaces.interface,
-						  try
-							  [Vip|_] = mnesia:dirty_index_read(cluster_network_vip,Iface,#cluster_network_vip.interface),
-							  cluster_supervisor_callback:vip_state({down,node(),Vip},Vip#cluster_network_vip.addr)
-						  catch
-							  _:_ ->
-								  ok
-						  end,
-						  IfCfgCmd = cluster_conf:get(ifconfig_script,?DEFAULT_IFCFG),
-						  IfCfg = io_lib:format("~s ~s down",[IfCfgCmd,Iface]),
-						  Ret = os:cmd(IfCfg),
-						  error_logger:error_msg("Stopping local vip: ~p~n~p~n~p~n",[IntRec,lists:flatten(IfCfg),Ret])
-				  end,Interfaces),
+%% 						  error_logger:error_msg("Stopping ~p~n",[IntRec]),
+						  case clusterlib:inet_version(IntRec#network_interfaces.address) of
+							  inet ->
+								  try
+									  case mnesia:dirty_index_read(cluster_network_vip,Iface,#cluster_network_vip.interface) of
+										  [Vip|_] ->
+											  cluster_supervisor_callback:vip_state({down,node(),Vip},Vip#cluster_network_vip.addr),
+											  IfCfgCmd = cluster_conf:get(ifconfig_script,?DEFAULT_IFCFG),
+											  IfCfg = io_lib:format("~s ~s down",[IfCfgCmd,Iface]),
+											  Ret = os:cmd(IfCfg),
+											  error_logger:info_msg("Stopping local vip: ~p~n~p~n~p~n",[IntRec,lists:flatten(IfCfg),Ret]);
+										  _ ->
+											  error_logger:info_msg("~p not stopped on ~p~n",[IntRec#network_interfaces.address,Iface])
+									  end
+								  catch
+									  _:_ ->
+										  ok
+								  end;
+							  inet6 ->
+								  case mnesia:dirty_read(cluster_network_vip,IntRec#network_interfaces.address) of
+									  [Vip|_] ->
+										  stop_vip_rpc(Vip,inet_version(Vip#cluster_network_vip.addr)),
+										  error_logger:info_msg("inet6 address found!~n~p~n~p~n",[IntRec,Vip]);
+									  _ ->
+										  error_logger:info_msg("inet6 address not found!~n~p~n",[IntRec])
+								  end
+						  end end,Interfaces),
 	ok.
-
-inet_version({ip,IP}) ->
-	inet_version(IP);
-inet_version({_,_,_,_}) ->
-	inet;
-inet_version({_,_,_,_,_,_,_,_}) ->
-	inet6.
