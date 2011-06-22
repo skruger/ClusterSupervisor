@@ -328,6 +328,7 @@ start_vip_rpc(#cluster_network_vip{addr=Addr}=Vip,inet6) ->
 	Iface = cluster_conf:get(listen_interface,"eth0"),
 	IpExec = io_lib:format("~s addr add ~s/64 dev ~s",[IpCmd,cluster_network_manager:ip_tuple_to_list(Addr),Iface]),
 	Ret = os:cmd(IpExec),
+	cluster_supervisor_callback:vip_state({up,node(),Vip},Addr),
 	error_logger:error_msg("Starting vip on ~p: ~p~n~p~n~p~n",[node(),Vip,lists:flatten(IpExec),Ret]),
 	ok.
 
@@ -368,7 +369,6 @@ stop_vip_rpc(#cluster_network_vip{addr=Addr}=Vip,Inet) ->
 					IfCfgCmd = cluster_conf:get(ifconfig_script,?DEFAULT_IFCFG),
 					IfCfg = io_lib:format("~s ~s down",[IfCfgCmd,Iface]),
 					Ret = os:cmd(IfCfg),
-					cluster_supervisor_callback:vip_state({down,node(),Vip},Addr),
 					error_logger:error_msg("Stopping vip on ~p: ~p~n~p~n~p~n",[node(),Vip,lists:flatten(IfCfg),Ret]);
 				inet6 ->
 					IpCmd = cluster_conf:get(ip_script,?DEFAULT_IFCFG),
@@ -377,6 +377,7 @@ stop_vip_rpc(#cluster_network_vip{addr=Addr}=Vip,Inet) ->
 					Ret = os:cmd(IpExec),
 					error_logger:error_msg("Trying to stop inet6 vip ~p~n~p~n~p~n~p~n",[Addr,Vip,IpExec,Ret])
 			end,
+			cluster_supervisor_callback:vip_state({down,node(),Vip},Addr),
 			ok;
 		Other ->
 			error_logger:info_msg("stop_vip_rpc got unexpected response to find_alias_node()~nFound: ~p~n",[Other]),
