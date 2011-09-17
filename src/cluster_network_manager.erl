@@ -145,7 +145,7 @@ init([]) ->
 handle_call(get_interfaces,_From,State) ->
 	{reply,get_interface_proplist(),State};
 handle_call(get_addrs,_From,State) ->
-	{reply,get_addresses()++cluster_vip_manager:get_vips(),State};
+	{reply,get_addresses()++cluster_vip_manager:get_vip_recs(),State};
 
 handle_call(_Request, _From, State) ->
     Reply = ok,

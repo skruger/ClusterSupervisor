@@ -51,12 +51,18 @@ run() ->
 %%          {error, Reason}
 %% --------------------------------------------------------------------
 start(_Type, StartArgs) ->
-    case cluster_supervisor_sup:start_link(StartArgs) of
-	{ok, Pid} ->
-	    {ok, Pid};
-	Error ->
-	    Error
-    end.
+	case mnesia:wait_for_tables(mnesia:system_info(local_tables),60000) of
+		ok ->
+    		case cluster_supervisor_sup:start_link(StartArgs) of
+				{ok, Pid} ->
+	    			{ok, Pid};
+				Error ->
+	    			Error
+    			end;
+		MnesiaError ->
+			error_logger:error_msg("Mnesia did not become ready in ~p:start()!~n~p~n",[?MODULE,MnesiaError]),
+			MnesiaError
+	end.
 
 %% --------------------------------------------------------------------
 %% Func: stop/1

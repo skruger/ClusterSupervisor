@@ -15,7 +15,7 @@
 %% External exports
 -export([start_link/0]).
 
--export([add_vip/1,enable_vip/1,disable_vip/1,get_vips/0,get_vip_alias/1,status/0,start_vip_rpc/2,stop_vip_rpc/2,set_hostnodes/2,stop_local_vips/0]).
+-export([add_vip/1,enable_vip/1,disable_vip/1,get_vip_list/0,get_vip_recs/0,get_vip_alias/1,status/0,start_vip_rpc/2,stop_vip_rpc/2,set_hostnodes/2,stop_local_vips/0]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2, code_change/3]).
@@ -52,6 +52,9 @@ enable_vip({ip,_}=Addr) ->
 
 disable_vip({ip,_}=Addr) ->
 	gen_server:call({global,?MODULE},{disable_vip,Addr}).
+
+get_vip_list() ->
+	[{IP,Stat,Nodes} || #cluster_network_vip{addr=IP,status=Stat,hostnodes=Nodes} <- get_vip_recs()].
 
 set_hostnodes({ip,_}=Addr,Nodes) ->
 	gen_server:call({global,?MODULE},{set_hostnodes,Addr,Nodes}).
@@ -384,7 +387,7 @@ stop_vip_rpc(#cluster_network_vip{addr=Addr}=Vip,Inet) ->
 			error
 	end.
 
-get_vips() ->
+get_vip_recs() ->
 	F1 = fun() ->
 				 lists:map(fun(C) -> [Ret|_] = mnesia:read(cluster_network_vip,C),Ret end,
 						   mnesia:all_keys(cluster_network_vip))
