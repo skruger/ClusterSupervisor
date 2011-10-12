@@ -44,20 +44,76 @@ start_link() ->
 %% Server functions
 %% ====================================================================
 
-add_vip({ip,_}=Addr) ->
-	gen_server:call({global,?MODULE},{add_vip,Addr}).
+add_vip({ip,_}=IP) ->
+	NewVip = #cluster_network_vip{addr=IP,status=unconfigured,hostnodes=[]},
+	F1 = fun() ->
+				 case mnesia:read(cluster_network_vip,IP) of
+					 [#cluster_network_vip{addr=IP}|_] ->
+						 mnesia:abort(addrinuse);
+					 _ ->
+						 mnesia:write(NewVip)
+				 end
+		 end,
+	case mnesia:transaction(F1) of
+		{atomic,Res} ->
+			Res;
+		{aborted,Reason} ->
+			{error,Reason};
+		Error ->
+			Error
+	end.
+%% 	gen_server:call({global,?MODULE},{add_vip,Addr}).
 
 enable_vip({ip,_}=Addr) ->
-	gen_server:call({global,?MODULE},{enable_vip,Addr}).
+	set_vip_status(Addr,active).
+%% 	gen_server:call({global,?MODULE},{enable_vip,Addr}).
 
 disable_vip({ip,_}=Addr) ->
-	gen_server:call({global,?MODULE},{disable_vip,Addr}).
+	set_vip_status(Addr,disabled).
+%% 	gen_server:call({global,?MODULE},{disable_vip,Addr}).
+
+set_vip_status({ip,_}=IP,Status) ->
+	F1 = fun() ->
+				 case mnesia:read(cluster_network_vip,IP) of
+					 [#cluster_network_vip{addr=IP}=VIP|_] ->
+						 case Status of
+							 disabled ->
+								 stop_vip(VIP,inet_version(IP));
+							 _ -> ok
+						 end,
+						 mnesia:write(VIP#cluster_network_vip{status=Status});
+					 _ -> mnesia:abort(invalid_vip)
+				 end
+		 end,
+	case mnesia:transaction(F1) of
+		{atomic,Res} ->
+			Res;
+		{aborted,Reason} ->
+			{error,Reason};
+		Error ->
+			Error
+	end.
 
 get_vip_list() ->
 	[{IP,Stat,Nodes} || #cluster_network_vip{addr=IP,status=Stat,hostnodes=Nodes} <- get_vip_recs()].
 
-set_hostnodes({ip,_}=Addr,Nodes) ->
-	gen_server:call({global,?MODULE},{set_hostnodes,Addr,Nodes}).
+set_hostnodes({ip,_}=IP,Nodes) ->
+	F1 = fun() ->
+				 case mnesia:read(cluster_network_vip,IP) of
+					[Vip|_] ->
+						mnesia:write(Vip#cluster_network_vip{hostnodes=Nodes});
+					_ ->
+						mnesia:abort(novip)
+				 end end,
+	case mnesia:transaction(F1) of
+		{atomic,Res} ->
+			Res;
+		{aborted,Reason} ->
+			{error,Reason};
+		Error ->
+			Error
+	end.
+%	gen_server:call({global,?MODULE},{set_hostnodes,Addr,Nodes}).
 
 status() ->
 	gen_server:call({global,?MODULE},{status}).
@@ -86,65 +142,65 @@ init([]) ->
 %%          {stop, Reason, Reply, State}   | (terminate/2 is called)
 %%          {stop, Reason, State}            (terminate/2 is called)
 %% --------------------------------------------------------------------
-handle_call({add_vip,IP},_From,State) ->
-	NewVip = #cluster_network_vip{addr=IP,status=unconfigured,hostnodes=[]},
-	F1 = fun() ->
-				 case mnesia:read(cluster_network_vip,IP) of
-					 [#cluster_network_vip{addr=IP}|_] ->
-						 mnesia:abort(addrinuse);
-					 _ ->
-						 mnesia:write(NewVip)
-				 end
-		 end,
-	case mnesia:transaction(F1) of
-		{atomic,Res} ->
-			{reply,Res,State};
-		{aborted,Reason} ->
-			{reply,{error,Reason},State};
-		Error ->
-			{reply,Error,State}
-	end;
-handle_call({set_hostnodes,IP,Nodes},_From,State) ->
-	F1 = fun() ->
-				 case mnesia:read(cluster_network_vip,IP) of
-					[Vip|_] ->
-						mnesia:write(Vip#cluster_network_vip{hostnodes=Nodes});
-					_ ->
-						mnesia:abort(novip)
-				 end end,
-	case mnesia:transaction(F1) of
-		{atomic,Res} ->
-			{reply,Res,State};
-		{aborted,Reason} ->
-			{reply,{error,Reason},State};
-		Error ->
-			{reply,Error,State}
-	end;
-handle_call({enable_vip,IP},From,State) ->
-	handle_call({set_vip_status,IP,active},From,State);
-handle_call({disable_vip,IP},From,State) ->
-	handle_call({set_vip_status,IP,disabled},From,State);
-handle_call({set_vip_status,IP,Status},_From,State) ->
-	F1 = fun() ->
-				 case mnesia:read(cluster_network_vip,IP) of
-					 [#cluster_network_vip{addr=IP}=VIP|_] ->
-						 case Status of
-							 disabled ->
-								 stop_vip(VIP,inet_version(IP));
-							 _ -> ok
-						 end,
-						 mnesia:write(VIP#cluster_network_vip{status=Status});
-					 _ -> mnesia:abort(invalid_vip)
-				 end
-		 end,
-	case mnesia:transaction(F1) of
-		{atomic,Res} ->
-			{reply,Res,State};
-		{aborted,Reason} ->
-			{reply,{error,Reason},State};
-		Error ->
-			{reply,Error,State}
-	end;
+%% handle_call({add_vip,IP},_From,State) ->
+%% 	NewVip = #cluster_network_vip{addr=IP,status=unconfigured,hostnodes=[]},
+%% 	F1 = fun() ->
+%% 				 case mnesia:read(cluster_network_vip,IP) of
+%% 					 [#cluster_network_vip{addr=IP}|_] ->
+%% 						 mnesia:abort(addrinuse);
+%% 					 _ ->
+%% 						 mnesia:write(NewVip)
+%% 				 end
+%% 		 end,
+%% 	case mnesia:transaction(F1) of
+%% 		{atomic,Res} ->
+%% 			{reply,Res,State};
+%% 		{aborted,Reason} ->
+%% 			{reply,{error,Reason},State};
+%% 		Error ->
+%% 			{reply,Error,State}
+%% 	end;
+%% handle_call({set_hostnodes,IP,Nodes},_From,State) ->
+%% 	F1 = fun() ->
+%% 				 case mnesia:read(cluster_network_vip,IP) of
+%% 					[Vip|_] ->
+%% 						mnesia:write(Vip#cluster_network_vip{hostnodes=Nodes});
+%% 					_ ->
+%% 						mnesia:abort(novip)
+%% 				 end end,
+%% 	case mnesia:transaction(F1) of
+%% 		{atomic,Res} ->
+%% 			{reply,Res,State};
+%% 		{aborted,Reason} ->
+%% 			{reply,{error,Reason},State};
+%% 		Error ->
+%% 			{reply,Error,State}
+%% 	end;
+%% handle_call({enable_vip,IP},From,State) ->
+%% 	handle_call({set_vip_status,IP,active},From,State);
+%% handle_call({disable_vip,IP},From,State) ->
+%% 	handle_call({set_vip_status,IP,disabled},From,State);
+%% handle_call({set_vip_status,IP,Status},_From,State) ->
+%% 	F1 = fun() ->
+%% 				 case mnesia:read(cluster_network_vip,IP) of
+%% 					 [#cluster_network_vip{addr=IP}=VIP|_] ->
+%% 						 case Status of
+%% 							 disabled ->
+%% 								 stop_vip(VIP,inet_version(IP));
+%% 							 _ -> ok
+%% 						 end,
+%% 						 mnesia:write(VIP#cluster_network_vip{status=Status});
+%% 					 _ -> mnesia:abort(invalid_vip)
+%% 				 end
+%% 		 end,
+%% 	case mnesia:transaction(F1) of
+%% 		{atomic,Res} ->
+%% 			{reply,Res,State};
+%% 		{aborted,Reason} ->
+%% 			{reply,{error,Reason},State};
+%% 		Error ->
+%% 			{reply,Error,State}
+%% 	end;
 handle_call({status},_From,State) ->
 	{reply,State,State};
 handle_call(_Request, _From, State) ->
