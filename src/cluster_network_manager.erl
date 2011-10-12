@@ -14,6 +14,7 @@
 %% --------------------------------------------------------------------
 %% External exports
 -export([get_interfaces/0,get_interface_addr/1,get_interface_proplist/1,get_interface_proplist/0,discover_node_interfaces/1,find_alias_node/1]).
+-export([get_inet6_addresses/0]).
 
 -export([ip_tuple_to_list/1,ip_list_to_tuple/1]).
 -export([start_link/0]).
@@ -232,8 +233,10 @@ get_addresses() ->
 	end.
 
 get_inet6_addresses() ->
+	get_inet6_addresses(cluster_conf:get(listen_interface,"eth0")).
+
+get_inet6_addresses(IFace) ->
 	IPCmd = cluster_conf:get(ip_script,?DEFAULT_IP_SCRIPT),
-	IFace = cluster_conf:get(listen_interface,"eth0"),
 	IPExec = io_lib:format("~s -6 addr show ~s | grep global | sed -e \"s?.*inet6\ ??g\" | cut -f 1 -d \"/\"",[IPCmd,IFace]),
 	IPStr = os:cmd(IPExec),
 	Addrs = string:tokens(IPStr,"\n"),

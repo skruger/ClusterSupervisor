@@ -25,19 +25,25 @@
 %% ====================================================================
 
 get(Key,Default) ->
-	try
-		gen_server:call(?MODULE,{get,Key,Default})
-	catch
-		_:Err ->
-			case application:get_env(cluster_supervisor,cluster_config) of
-				{ok,Conf} ->
-					error_logger:error_msg("~p:get() error: ~p~nFetching directly from application:get_env().~n", [?MODULE,Err]),
-					proplists:get_value(Key,Conf,Default);
-				Err2 ->
-					error_logger:error_msg("~p:get() error: ~p~nTried direct application:get_env() and got second error: ~p~n", [?MODULE,Err,Err2]),
-					Default
-			end
+	case application:get_env(cluster_supervisor,Key) of
+		{ok,Val} ->
+			Val;
+		_ ->
+			Default
 	end.
+%% 	try
+%% 		gen_server:call(?MODULE,{get,Key,Default})
+%% 	catch
+%% 		_:Err ->
+%% 			case application:get_env(cluster_supervisor,cluster_config) of
+%% 				{ok,Conf} ->
+%% 					error_logger:error_msg("~p:get() error: ~p~nFetching directly from application:get_env().~n", [?MODULE,Err]),
+%% 					proplists:get_value(Key,Conf,Default);
+%% 				Err2 ->
+%% 					error_logger:error_msg("~p:get() error: ~p~nTried direct application:get_env() and got second error: ~p~n", [?MODULE,Err,Err2]),
+%% 					Default
+%% 			end
+%% 	end.
 
 %% ====================================================================
 %% Server functions
