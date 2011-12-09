@@ -240,6 +240,6 @@ get_inet6_addresses(IFace) ->
 	IPExec = io_lib:format("~s -6 addr show ~s | grep global | sed -e \"s?.*inet6\ ??g\" | cut -f 1 -d \"/\"",[IPCmd,IFace]),
 	IPStr = os:cmd(IPExec),
 	Addrs = string:tokens(IPStr,"\n"),
-	[#network_interfaces{address={ip,inet_parse(A)},node=node(),interface=IFace,alias=true} || A <- Addrs].
+	[#network_interfaces{address={ip,inet_parse(A)},node=node(),interface=list_to_atom(IFace),alias=true} || A <- Addrs].
 	
 	
