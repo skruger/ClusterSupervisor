@@ -60,7 +60,8 @@ start(_Type, StartArgs) ->
 	    			Error
     			end;
 		MnesiaError ->
-			error_logger:error_msg("Mnesia did not become ready in ~p:start()!~n~p~n",[?MODULE,MnesiaError]),
+			error_logger:error_msg("Mnesia did not become ready in ~p:start()!~n~p~n",
+								   [?MODULE,MnesiaError]),
 			MnesiaError
 	end.
 

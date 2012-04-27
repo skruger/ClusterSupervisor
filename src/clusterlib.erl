@@ -24,7 +24,8 @@ inet_parse(IPStr) when is_list(IPStr) ->
 		{ok,IP} ->
 			IP;
 		_ ->
-			error_logger:error_msg("Invalid IP format: ~p~n~p~n",[IPStr,erlang:get_stacktrace()]),
+			error_logger:error_msg("Invalid IP format: ~p~n~p~n",
+								   [IPStr,erlang:get_stacktrace()]),
 			throw(invalid_ip)
 	end.
 

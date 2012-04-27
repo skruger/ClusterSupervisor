@@ -52,13 +52,16 @@ init(_Args) ->
     {ok,{{one_for_one,2,5}, [
 %% 							 {cluster_conf,{cluster_conf,start_link,[]},
 %% 							  permanent,5000,worker,[]},
-							 {cluster_network_manager,{cluster_network_manager,start_link,[]},
+							 {cluster_network_manager,
+							  {cluster_network_manager,start_link,[]},
 							  permanent,5000,worker,[]},
-							 {cluster_supervisor_local,{cluster_supervisor_local,start_link,[]},
+							 {cluster_supervisor_local,
+							  {cluster_supervisor_local,start_link,[]},
 							  permanent,5000,worker,[]},
 %% 							 {cluster_vip,{cluster_supervisor,start_link,[vip]},
 %% 							  permanent,5000,worker,[]},
-							 {cluster_vip_manager,{cluster_vip_manager,start_link,[]},
+							 {cluster_vip_manager,
+							  {cluster_vip_manager,start_link,[]},
 							  permanent,5000,worker,[]}
 							 ]}}.
 

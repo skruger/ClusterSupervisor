@@ -13,7 +13,12 @@
 -include("cluster_supervisor.hrl").
 %% --------------------------------------------------------------------
 %% External exports
--export([get_interfaces/0,get_interface_addr/1,get_interface_proplist/1,get_interface_proplist/0,discover_node_interfaces/1,find_alias_node/1]).
+-export([get_interfaces/0,
+		 get_interface_addr/1,
+		 get_interface_proplist/1,
+		 get_interface_proplist/0,
+		 discover_node_interfaces/1,
+		 find_alias_node/1]).
 -export([get_inet6_addresses/0]).
 
 -export([ip_tuple_to_list/1,ip_list_to_tuple/1]).
@@ -122,10 +127,13 @@ start_link() ->
 %% --------------------------------------------------------------------
 init([]) ->
 	error_logger:info_msg("Starting ~p~n",[?MODULE]),
-	mnesia:create_table(cluster_network_address,[{attributes,record_info(fields,cluster_network_address)}]),
+	mnesia:create_table(cluster_network_address,
+						[{attributes,record_info(fields,cluster_network_address)}]),
 	mnesia:change_table_copy_type(cluster_network_address,node(),disc_copies),
 	mnesia:add_table_copy(cluster_network_address,node(),disc_copies),
-	mnesia:create_table(cluster_network_vip,[{attributes,record_info(fields,cluster_network_vip)}]),
+
+	mnesia:create_table(cluster_network_vip,
+						[{attributes,record_info(fields,cluster_network_vip)}]),
 	mnesia:add_table_index(cluster_network_vip,interface),
 	mnesia:change_table_copy_type(cluster_network_vip,node(),disc_copies),
 	mnesia:add_table_copy(cluster_network_vip,node(),disc_copies),
@@ -221,7 +229,10 @@ is_alias_interface(Iface) ->
 
 get_addresses() ->
 	F1 = fun() ->
-				 lists:map(fun(C) -> [Ret|_] = mnesia:read(cluster_network_address,C),Ret end,
+				 lists:map(fun(C) ->
+								   [Ret|_] = mnesia:read(cluster_network_address,C),
+								   Ret
+						   end,
 						   mnesia:all_keys(cluster_network_address))
 		 end,
 	case mnesia:transaction(F1) of
@@ -237,9 +248,14 @@ get_inet6_addresses() ->
 
 get_inet6_addresses(IFace) ->
 	IPCmd = cluster_conf:get(ip_script,?DEFAULT_IP_SCRIPT),
-	IPExec = io_lib:format("~s -6 addr show ~s | grep global | sed -e \"s?.*inet6\ ??g\" | cut -f 1 -d \"/\"",[IPCmd,IFace]),
+	IPExec = io_lib:format("~s -6 addr show ~s | grep global | "
+						   "sed -e \"s?.*inet6\ ??g\" | cut -f 1 -d \"/\"",
+						   [IPCmd,IFace]),
 	IPStr = os:cmd(IPExec),
 	Addrs = string:tokens(IPStr,"\n"),
-	[#network_interfaces{address={ip,inet_parse(A)},node=node(),interface=list_to_atom(IFace),alias=true} || A <- Addrs].
+	[#network_interfaces{address={ip,inet_parse(A)},
+						 node=node(),
+						 interface=list_to_atom(IFace),
+						 alias=true} || A <- Addrs].
 	
 	

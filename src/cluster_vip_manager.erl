@@ -15,14 +15,21 @@
 %% External exports
 -export([start_link/0]).
 
--export([add_vip/1,enable_vip/1,disable_vip/1,get_vip_list/0,get_vip_recs/0,get_vip_alias/1]).
--export([status/0,start_vip_rpc/2,stop_vip_rpc/2,set_hostnodes/2,stop_local_vips/0]).
--export([get_available_local_vips/0]).
+-export([add_vip/1,
+		 enable_vip/1,
+		 disable_vip/1,
+		 get_vip_list/0,
+		 get_vip_recs/0,
+		 get_vip_alias/1,
+		 get_available_local_vips/0,
+		 status/0,
+		 start_vip_rpc/2,
+		 stop_vip_rpc/2,
+		 set_hostnodes/2,
+		 stop_local_vips/0]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2, code_change/3]).
-
--import(clusterlib,[inet_version/1]).
 
 -record(state, {check_timer,ifconfig_script}).
 
@@ -36,7 +43,8 @@ start_link() ->
 				 fun() ->
 						 case global:whereis_name(?MODULE) of
 							 undefined ->
-								 gen_server:start_link({global,?MODULE},?MODULE,[],[]);
+								 gen_server:start_link({global,?MODULE},
+													   ?MODULE,[],[]);
 							 Pid ->
 								 erlang:link(Pid),
 								 {ok,Pid}
@@ -80,7 +88,7 @@ set_vip_status({ip,_}=IP,Status) ->
 					 [#cluster_network_vip{addr=IP}=VIP|_] ->
 						 case Status of
 							 disabled ->
-								 stop_vip(VIP,inet_version(IP));
+								 stop_vip(VIP,clusterlib:inet_version(IP));
 							 _ -> ok
 						 end,
 						 mnesia:write(VIP#cluster_network_vip{status=Status});
@@ -97,10 +105,12 @@ set_vip_status({ip,_}=IP,Status) ->
 	end.
 
 get_vip_list() ->
-	[{IP,Stat,Nodes} || #cluster_network_vip{addr=IP,status=Stat,hostnodes=Nodes} <- get_vip_recs()].
+	[{IP,Stat,Nodes} ||
+	 #cluster_network_vip{addr=IP,status=Stat,hostnodes=Nodes} <- get_vip_recs()].
 
 get_available_local_vips() ->
-	IPList = [ IP || {network_interfaces,_,_,IP,_} <- cluster_network_manager:get_interface_proplist()],
+	IfaceList = cluster_network_manager:get_interface_proplist(),
+	IPList = [ IP || {network_interfaces,_,_,IP,_} <- IfaceList],
 	lists:filter(fun({IP,_,_}) ->
 						 lists:member(IP,IPList)
 				 end, get_vip_list()).
@@ -194,7 +204,7 @@ init([]) ->
 %% 					 [#cluster_network_vip{addr=IP}=VIP|_] ->
 %% 						 case Status of
 %% 							 disabled ->
-%% 								 stop_vip(VIP,inet_version(IP));
+%% 								 stop_vip(VIP,clusterlib:inet_version(IP));
 %% 							 _ -> ok
 %% 						 end,
 %% 						 mnesia:write(VIP#cluster_network_vip{status=Status});
@@ -228,7 +238,7 @@ handle_cast({check_vip,VipKey},State) ->
 		[#cluster_network_vip{status=disabled,interface=undefined,node=undefined}|_] ->
 			ok;
 		[#cluster_network_vip{status=disabled,addr=Addr}=Vip|_] ->
-			stop_vip(Vip,inet_version(Addr));
+			stop_vip(Vip,clusterlib:inet_version(Addr));
 %% 		[#cluster_network_vip{status=active}=Vip|_] ->
 %% 			gen_server:cast(self(),{check_active_vip_details,Vip});
 		[#cluster_network_vip{addr=_Addr}=Vip|_] ->
@@ -242,17 +252,23 @@ handle_cast({check_vip,VipKey},State) ->
 handle_cast({stop_vip,Vip,Inet},State) ->
 	stop_vip(Vip,Inet),
 	{noreply,State};
-handle_cast({check_active_vip_details,#cluster_network_vip{addr=Addr}=Vip},State) when Vip#cluster_network_vip.hostnodes == [] ->
+handle_cast({check_active_vip_details,#cluster_network_vip{addr=Addr}=Vip},
+			State) when Vip#cluster_network_vip.hostnodes == [] ->
 	error_logger:error_msg("Vip ~p does not have any candidate host nodes.~n",[Addr]),
 	case cluster_network_manager:find_alias_node(Addr) of
 		[#network_interfaces{node=Node}|_] ->
-			error_logger:error_msg("Vip ~p found running on unauthorized node ~p!  Stopping.~n",[Addr,Node]),
-			stop_vip(Vip,inet_version(Addr));
+			error_logger:error_msg("Vip ~p found running on unauthorized node ~p!  Stopping.~n",
+								   [Addr,Node]),
+			stop_vip(Vip,clusterlib:inet_version(Addr));
 		_ ->
 			ok
 	end,
 	{noreply,State};
-handle_cast({check_active_vip_details,#cluster_network_vip{addr=Addr,interface=Int,node=Node,hostnodes=HostNodes}=Vip},State) ->
+handle_cast({check_active_vip_details,
+			 #cluster_network_vip{addr=Addr,
+								  interface=Int,
+								  node=Node,hostnodes=HostNodes}=Vip},
+			State) ->
 	[PreferredNode|_] = HostNodes,
 	case cluster_network_manager:find_alias_node(Addr) of
 		[#network_interfaces{interface=Int,node=Node}|_] when Node /= PreferredNode ->
@@ -263,20 +279,29 @@ handle_cast({check_active_vip_details,#cluster_network_vip{addr=Addr,interface=I
 			{noreply,State};
 		[#network_interfaces{interface=NewInt,node=NewNode}|_] ->
 			NewVip = Vip#cluster_network_vip{interface=NewInt,node=NewNode},
-			error_logger:error_msg("Vip details didn't match!~nOld: ~p~nNew: ~p~n",[Vip,NewVip]),
+			error_logger:error_msg("Vip details didn't match!~nOld: ~p~nNew: ~p~n",
+								   [Vip,NewVip]),
 			mnesia:transaction(fun() -> mnesia:write(NewVip) end),
 			{noreply,State};
 		Other ->
-			error_logger:info_msg("Vip not found on any running nodes!  Trying to start on ~p!~nfind_alias_node() returned ~p~nVip: ~p~n",[Node,Other,Vip]),
-			StartedNode = start_vip(Vip,inet_version(Addr),HostNodes),
-			mnesia:transaction(fun() -> mnesia:write(Vip#cluster_network_vip{node=StartedNode}) end),
+			error_logger:info_msg("Vip not found on any running nodes!  "
+								   "Trying to start on ~p!~nfind_alias_node() returned ~p~nVip: ~p~n",
+								  [Node,Other,Vip]),
+			StartedNode = start_vip(Vip,clusterlib:inet_version(Addr),HostNodes),
+			mnesia:transaction(fun() ->
+									   mnesia:write(Vip#cluster_network_vip{node=StartedNode})
+							   end),
 			{noreply,State}
 	end;
-handle_cast({fix_vip_node,VIP,[TryNode|_R]},State) when VIP#cluster_network_vip.node == TryNode ->
-	error_logger:info_msg("No candidate nodes were found alive for vip ~p~n",[VIP#cluster_network_vip.addr]),
+handle_cast({fix_vip_node,VIP,[TryNode|_R]},
+			State) when VIP#cluster_network_vip.node == TryNode ->
+	error_logger:info_msg("No candidate nodes were found alive for vip ~p~n",
+						  [VIP#cluster_network_vip.addr]),
 	{noreply,State};
-handle_cast({fix_vip_node,VIP,[TryNode|_R]},State) when TryNode == node() ->
-	error_logger:info_msg("Start vip ~p on current node ~p.~n",[VIP#cluster_network_vip.addr,node()]),
+handle_cast({fix_vip_node,VIP,[TryNode|_R]},
+			State) when TryNode == node() ->
+	error_logger:info_msg("Start vip ~p on current node ~p.~n",
+						  [VIP#cluster_network_vip.addr,node()]),
 	gen_server:cast(self(),{restart_vip,VIP}),
 	{noreply,State};
 handle_cast({fix_vip_node,VIP,[TryNode|R]},State) ->
@@ -284,7 +309,8 @@ handle_cast({fix_vip_node,VIP,[TryNode|R]},State) ->
 		true ->
 			case cluster_supervisor_local:ping({cluster_supervisor_local,TryNode}) of
 				pong ->
-					error_logger:info_msg("Stopping ~p to try starting on more preferred node ~p.",[VIP#cluster_network_vip.addr,TryNode]),
+					error_logger:info_msg("Stopping ~p to try starting on more preferred node ~p.",
+										  [VIP#cluster_network_vip.addr,TryNode]),
 					gen_server:cast(self(),{restart_vip,VIP});
 				_ ->
 					% Trying next node in list.
@@ -298,7 +324,7 @@ handle_cast({fix_vip_node,VIP,[TryNode|R]},State) ->
 	{noreply,State};
 handle_cast({restart_vip,VIP},State) ->
 	error_logger:info_msg("Restarting vip ~p.~n",[VIP#cluster_network_vip.addr]),
-	stop_vip(VIP,inet_version(VIP#cluster_network_vip.addr)),
+	stop_vip(VIP,clusterlib:inet_version(VIP#cluster_network_vip.addr)),
 %% 	gen_server:cast(self(),{check_active_vip_details,VIP}),
 	{noreply,State};
 handle_cast(stop_local_vips,State) ->
@@ -329,7 +355,10 @@ handle_info(check_vips,State) ->
 %% 	error_logger:info_msg("Check vips.~n",[]),
 	case cluster_supervisor:get_quorum(vip) of
 		true ->
-			lists:foreach(fun(V) -> gen_server:cast(self(),{check_vip,V}) end,mnesia:dirty_all_keys(cluster_network_vip));
+			lists:foreach(fun(V) ->
+								  gen_server:cast(self(),{check_vip,V})
+						  end,
+						  mnesia:dirty_all_keys(cluster_network_vip));
 		false ->
 			gen_server:cast(self(),stop_local_vips)
 	end,
@@ -375,28 +404,37 @@ start_vip(#cluster_network_vip{addr=Addr}=Vip,Inet,[Node|RNodes]) ->
 				ok ->
 					Node;
 				_ ->
-					error_logger:warning_msg("Vip ~p unable to start on node ~p~n", [Addr,Node]),
-					start_vip(Vip,Inet,RNodes)
+					error_logger:warning_msg("Vip ~p unable to start on node ~p~n",
+											 [Addr, Node]),
+					start_vip(Vip, Inet, RNodes)
 			end;
 		_ ->
-			start_vip(Vip,Inet,RNodes)
+			start_vip(Vip, Inet, RNodes)
 	end.
 				
 		
 start_vip_rpc(#cluster_network_vip{addr=Addr}=Vip,inet) ->
 	IfCfgCmd = cluster_conf:get(ifconfig_script,?DEFAULT_IFCFG),
-	IfCfg = io_lib:format("~s ~s up ~s",[IfCfgCmd,get_vip_alias(Addr),cluster_network_manager:ip_tuple_to_list(Addr)]),
+	IfCfg = io_lib:format("~s ~s up ~s",
+						  [IfCfgCmd,
+						   get_vip_alias(Addr),
+						   cluster_network_manager:ip_tuple_to_list(Addr)]),
 	Ret = os:cmd(IfCfg),
 	cluster_supervisor_callback:vip_state({up,node(),Vip},Addr),
-	error_logger:error_msg("Starting vip on ~p: ~p~n~p~n~p~n",[node(),Vip,lists:flatten(IfCfg),Ret]),
+	error_logger:error_msg("Starting vip on ~p: ~p~n~p~n~p~n",
+						   [node(), Vip, lists:flatten(IfCfg), Ret]),
 	ok;
 start_vip_rpc(#cluster_network_vip{addr=Addr}=Vip,inet6) ->
 	IpCmd = cluster_conf:get(ip_script,?DEFAULT_IFCFG),
 	Iface = cluster_conf:get(listen_interface,"eth0"),
-	IpExec = io_lib:format("~s addr add ~s/64 dev ~s",[IpCmd,cluster_network_manager:ip_tuple_to_list(Addr),Iface]),
+	IpExec = io_lib:format("~s addr add ~s/64 dev ~s",
+						   [IpCmd,
+							cluster_network_manager:ip_tuple_to_list(Addr),
+							Iface]),
 	Ret = os:cmd(IpExec),
 	cluster_supervisor_callback:vip_state({up,node(),Vip},Addr),
-	error_logger:error_msg("Starting vip on ~p: ~p~n~p~n~p~n",[node(),Vip,lists:flatten(IpExec),Ret]),
+	error_logger:error_msg("Starting vip on ~p: ~p~n~p~n~p~n",
+						   [node(),Vip,lists:flatten(IpExec),Ret]),
 	ok.
 
 stop_vip(Vip,Inet) ->
@@ -406,7 +444,8 @@ stop_vip(Vip,Inet) ->
 				ok ->
 					ok;
 				Err ->
-					error_logger:error_msg("Error stopping vip ~p~n~p~n",[Vip#cluster_network_vip.addr,Err]),
+					error_logger:error_msg("Error stopping vip ~p~n~p~n",
+										   [Vip#cluster_network_vip.addr,Err]),
 					Err
 			end;
 		[#network_interfaces{node=Node}|_] ->
@@ -414,14 +453,17 @@ stop_vip(Vip,Inet) ->
 				ok ->
 					ok;
 				Err ->
-					error_logger:error_msg("Error stopping vip ~p~n~p~n",[Vip#cluster_network_vip.addr,Err]),
+					error_logger:error_msg("Error stopping vip ~p~n~p~n",
+										   [Vip#cluster_network_vip.addr,Err]),
 					Err
 			end;
 		[] ->
 			%% Do nothing if vip is already down.
 			ok;
 		Other ->
-			error_logger:error_msg("Unexpected response to find_alias_node() for vip ~p~n~p~n~p~n",[Vip#cluster_network_vip.addr,Vip,Other]),
+			error_logger:error_msg("Unexpected response to find_alias_node() for vip "
+								    "~p~n~p~n~p~n",
+								   [Vip#cluster_network_vip.addr,Vip,Other]),
 			error
 	end.
 		
@@ -430,30 +472,42 @@ stop_vip(Vip,Inet) ->
 %% 	{error,einval};
 stop_vip_rpc(#cluster_network_vip{addr=Addr}=Vip,Inet) ->
 	case cluster_network_manager:find_alias_node(Addr) of
-		[#network_interfaces{interface=Iface}=VipRec|_] when VipRec#network_interfaces.node == node() ->
+		[#network_interfaces{interface=Iface}=VipRec|_]
+		  when VipRec#network_interfaces.node == node() ->
 			case Inet of
 				inet ->
 					IfCfgCmd = cluster_conf:get(ifconfig_script,?DEFAULT_IFCFG),
 					IfCfg = io_lib:format("~s ~s down",[IfCfgCmd,Iface]),
 					Ret = os:cmd(IfCfg),
-					error_logger:error_msg("Stopping vip on ~p: ~p~n~p~n~p~n",[node(),Vip,lists:flatten(IfCfg),Ret]);
+					error_logger:error_msg("Stopping vip on ~p: ~p~n~p~n~p~n",
+										   [node(),Vip,lists:flatten(IfCfg),Ret]);
 				inet6 ->
 					IpCmd = cluster_conf:get(ip_script,?DEFAULT_IFCFG),
 					Iface = cluster_conf:get(listen_interface,"eth0"),
-					IpExec = lists:flatten(io_lib:format("~s -6 addr del ~s/64 dev ~s",[IpCmd,cluster_network_manager:ip_tuple_to_list(Addr),Iface])),
+					IpExecList = io_lib:format("~s -6 addr del ~s/64 dev ~s",
+											   [IpCmd,
+												cluster_network_manager:ip_tuple_to_list(Addr),
+												Iface]),
+					IpExec = lists:flatten(IpExecList),
 					Ret = os:cmd(IpExec),
-					error_logger:error_msg("Trying to stop inet6 vip ~p~n~p~n~p~n~p~n",[Addr,Vip,IpExec,Ret])
+					error_logger:error_msg("Trying to stop inet6 vip ~p~n~p~n~p~n~p~n",
+										   [Addr,Vip,IpExec,Ret])
 			end,
 			cluster_supervisor_callback:vip_state({down,node(),Vip},Addr),
 			ok;
 		Other ->
-			error_logger:info_msg("stop_vip_rpc got unexpected response to find_alias_node()~nFound: ~p~n",[Other]),
+			error_logger:info_msg("stop_vip_rpc got unexpected response to find_alias_node()~n"
+								   "Found: ~p~n",
+								  [Other]),
 			error
 	end.
 
 get_vip_recs() ->
 	F1 = fun() ->
-				 lists:map(fun(C) -> [Ret|_] = mnesia:read(cluster_network_vip,C),Ret end,
+				 lists:map(fun(C) ->
+								   [Ret|_] = mnesia:read(cluster_network_vip,C),
+								   Ret
+						   end,
 						   mnesia:all_keys(cluster_network_vip))
 		 end,
 	case mnesia:transaction(F1) of
@@ -478,31 +532,42 @@ get_vip_alias(IP) ->
 	
 stop_local_vips() ->
 	Interfaces = 
-	lists:filter(fun(Int) -> Int#network_interfaces.alias end,cluster_network_manager:discover_node_interfaces(local)),
+	lists:filter(fun(Int) ->
+						 Int#network_interfaces.alias
+				 end,
+				 cluster_network_manager:discover_node_interfaces(local)),
 	lists:foreach(fun(IntRec) ->
 						  Iface = IntRec#network_interfaces.interface,
 %% 						  error_logger:error_msg("Stopping ~p~n",[IntRec]),
 						  case clusterlib:inet_version(IntRec#network_interfaces.address) of
 							  inet ->
 								  try
-									  case mnesia:dirty_index_read(cluster_network_vip,Iface,#cluster_network_vip.interface) of
+									  case mnesia:dirty_index_read(cluster_network_vip,
+																   Iface,
+																   #cluster_network_vip.interface) of
 										  [Vip|_] ->
-											  cluster_supervisor_callback:vip_state({down,node(),Vip},Vip#cluster_network_vip.addr),
+											  cluster_supervisor_callback:vip_state({down,node(),Vip},
+																					Vip#cluster_network_vip.addr),
 											  IfCfgCmd = cluster_conf:get(ifconfig_script,?DEFAULT_IFCFG),
-											  IfCfg = io_lib:format("~s ~s down",[IfCfgCmd,Iface]),
+											  IfCfg = io_lib:format("~s ~s down",
+																	[IfCfgCmd,Iface]),
 											  Ret = os:cmd(IfCfg),
-											  error_logger:info_msg("Stopping local vip: ~p~n~p~n~p~n",[IntRec,lists:flatten(IfCfg),Ret]);
+											  error_logger:info_msg("Stopping local vip: ~p~n~p~n~p~n",
+																	[IntRec,lists:flatten(IfCfg),Ret]);
 										  _ ->
-											  error_logger:info_msg("~p not stopped on ~p~n",[IntRec#network_interfaces.address,Iface])
+											  error_logger:info_msg("~p not stopped on ~p~n",
+																	[IntRec#network_interfaces.address,
+																	 Iface])
 									  end
 								  catch
 									  _:_ ->
 										  ok
 								  end;
 							  inet6 ->
-								  case mnesia:dirty_read(cluster_network_vip,IntRec#network_interfaces.address) of
+								  case mnesia:dirty_read(cluster_network_vip,
+														 IntRec#network_interfaces.address) of
 									  [Vip|_] ->
-										  stop_vip_rpc(Vip,inet_version(Vip#cluster_network_vip.addr)),
+										  stop_vip_rpc(Vip,clusterlib:inet_version(Vip#cluster_network_vip.addr)),
 										  error_logger:info_msg("inet6 address found!~n~p~n~p~n",[IntRec,Vip]);
 									  _ ->
 										  error_logger:info_msg("inet6 address not found!~n~p~n",[IntRec])

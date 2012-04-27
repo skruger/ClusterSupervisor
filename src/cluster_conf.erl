@@ -55,24 +55,31 @@ start_link() ->
 start_link(none) ->
 	case application:get_env(cluster_supervisor,cluster_config) of
 		{ok,Config} ->
-			gen_server:start_link({local,?MODULE},?MODULE,#state{config_terms=Config},[]);
+			gen_server:start_link({local,?MODULE},
+								  ?MODULE,
+								  #state{config_terms=Config},
+								  []);
 		Error ->
-			error_logger:error_msg("Could not start cluster_conf.  No -clusterconfig given at command line and app env cluster_config not given.~p~n~p",[Error])
+			error_logger:error_msg("Could not start cluster_conf.  "
+								    "No -clusterconfig given at command line "
+								    "and app env cluster_config not given.~p~n~p",
+								   [Error])
 	end;
 start_link(Config) ->
 	try
 		case file:consult(Config) of
 			{ok,Terms} ->
-				gen_server:start_link({local,?MODULE},?MODULE,#state{config_terms=Terms},[]);
+				gen_server:start_link({local,?MODULE},
+									  ?MODULE,
+									  #state{config_terms=Terms},
+									  []);
 			Err ->
-				error_logger:error_msg("~p:start_link(~p) failed with file:consult() error: ~p~n",[?MODULE,Config,Err]),
-%% 				error_logger:error_msg("Could not read config from ~p.~n~p~n",[Config,Err]),
+				error_logger:error_msg("~p:start_link(~p) failed with file:consult() "
+									    "error: ~p~n",
+									   [?MODULE,Config,Err]),
 				Err
 		end
 	catch
-%% 		_:{error,{LNum,erl_parse,Msg}} ->
-%% 			error_logger:error_msg("~s on line ~p~n",[lists:flatten(Msg),LNum]),
-%% 			{config_error,Config,Msg,LNum};
 		_:CErr ->
 			io:format("Could not read config from ~p.~n~p~n~n~n~n",[Config,CErr]),
 			{startup_error,CErr}
@@ -87,7 +94,8 @@ get_clusterconfig() ->
 		end
 	catch
 		_:Err ->
-			error_logger:error_msg("Error reading proxy config in get_proxyconfig(): ~p~n",[Err]),
+			error_logger:error_msg("Error reading proxy config in get_proxyconfig(): ~p~n",
+								   [Err]),
 			none
 	end.
 
@@ -117,9 +125,15 @@ handle_call({get,Key,Def},_From,State) ->
 	{reply,R,State};
 handle_call({get_callbacks,Type},_From,State) ->
 	CallBacks = 
-	lists:filter(fun(CB) -> case CB of
-								#cluster_supervisor_callback{type=Type} -> true;
-								_ -> false end end,application:get_env(cluster_supervisor,callbacks)),
+	lists:filter(fun(CB) ->
+						 case CB of
+							 #cluster_supervisor_callback{type=Type} ->
+								 true;
+							 _ ->
+								 false
+						 end
+				 end,
+				 application:get_env(cluster_supervisor,callbacks)),
 	{reply,CallBacks,State};
 handle_call(_Request, _From, State) ->
     Reply = ok,

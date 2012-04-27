@@ -31,8 +31,13 @@ vip_state(State,VipAddr) ->
 			{ok,CBList} ->
 				lists:filter(fun(X) ->
 									 case X of
-										 #cluster_supervisor_callback{type=vip_state} -> true;
-										 _ -> false end end,CBList);
+										 #cluster_supervisor_callback{type=vip_state} ->
+											 true;
+										 _ ->
+											 false
+									 end
+							 end,
+							 CBList);
 			_ -> []
 		end,
 	error_logger:warning_msg("Running ~p callbacks.~n~p~n",[length(CallBacks),CallBacks]),
@@ -41,7 +46,9 @@ vip_state(State,VipAddr) ->
 							  erlang:apply(Mod,vip_state,[State,VipAddr,ExtraArgs])
 						  catch
 							  _:Err ->
-								  error_logger:warning_msg("Error calling vip_state callback: ~p~n~p~n",[CB,Err]),
+								  error_logger:warning_msg("Error calling vip_state callback: "
+														    "~p~n~p~n",
+														   [CB,Err]),
 								  ok
 						  end
 				  end,CallBacks).
@@ -54,8 +61,14 @@ add(Type,Module,ExtraArgs) ->
 			{ok,CBList} when is_list(CBList) ->
 				lists:filter(fun(X) ->
 									 case X of
-										 #cluster_supervisor_callback{module=Module,type=Type} -> false;
-										 _ -> true end end,CBList);
+										 #cluster_supervisor_callback{module=Module,
+																	  type=Type} ->
+											 false;
+										 _ ->
+											 true
+									 end
+							 end,
+							 CBList);
 			None -> 
 				error_logger:error_msg("Replacing empty callback value: ~p~n",[None]),
 				[]

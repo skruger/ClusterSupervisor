@@ -58,7 +58,9 @@ get_quorum(_Name) ->
 		Count when Count >= QuorumSize ->
 			true;
 		Count ->
-			error_logger:error_msg("Unable to get quorum!  ~p members needed, ~p members active.~n",[QuorumSize,Count]),
+			error_logger:error_msg("Unable to get quorum!  "
+								    "~p members needed, ~p members active.~n",
+								   [QuorumSize,Count]),
 			false
 	end.
 
@@ -74,7 +76,12 @@ get_quorum(_Name) ->
 %%          {stop, Reason}
 %% --------------------------------------------------------------------
 init([Name]) ->
-	{ok, #state{name=Name,cluster_peers=[],is_master=false,child_monitors=[],peer_monitors=[],quorum=true}}.
+	{ok, #state{name=Name,
+				cluster_peers=[],
+				is_master=false,
+				child_monitors=[],
+				peer_monitors=[],
+				quorum=true}}.
 
 %% --------------------------------------------------------------------
 %% Function: handle_call/3
@@ -99,7 +106,9 @@ handle_call(get_quorum,_From,State) ->
 			{reply,true,State#state{quorum=true}};
 		Count ->
 			if State#state.quorum == true ->
-				   error_logger:error_msg("Unable to get quorum!  ~p members needed, ~p members active.~n",[QuorumSize,Count]);
+				   error_logger:error_msg("Unable to get quorum!  "
+										   "~p members needed, ~p members active.~n",
+										  [QuorumSize,Count]);
 			   true -> ok
 			end,
 			{reply,false,State#state{quorum=false}}

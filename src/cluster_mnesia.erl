@@ -26,9 +26,18 @@ table_copies() ->
                 end,Tables).
 
 table_copies({Node,Table}) ->
-    lists:filter(fun({T,N,_}) when N == Node, T == Table -> true; (_) -> false end,table_copies());
+    lists:filter(fun({T,N,_}) when N == Node, T == Table ->
+						 true;
+					(_) ->
+						 false
+				 end,
+				 table_copies());
 table_copies(Node) ->
-    lists:filter(fun({_,N,_}) when N == Node -> true; (_) -> false end,table_copies()).
+    lists:filter(fun({_,N,_}) when N == Node -> true;
+					(_) ->
+						 false
+				 end,
+				 table_copies()).
 
 get_table_copy_type(Node,Table) ->
 	case table_copies({Node,Table}) of
